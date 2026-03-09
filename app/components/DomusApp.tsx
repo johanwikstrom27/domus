@@ -766,6 +766,35 @@ function setLogoutPending(pending: boolean) {
   } catch {}
 }
 
+function resolveErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  if (typeof error === "object" && error && "message" in error && typeof error.message === "string" && error.message.trim()) {
+    return error.message;
+  }
+
+  return fallback;
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  let timerId: number | null = null;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timerId = window.setTimeout(() => reject(new Error(message)), ms);
+      }),
+    ]);
+  } finally {
+    if (timerId !== null) {
+      window.clearTimeout(timerId);
+    }
+  }
+}
+
 function extractToken(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) {
@@ -1439,14 +1468,22 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
           setCloudLoadError(null);
         }
 
-        await syncProfileFromAuth(authSession.user);
+        await withTimeout(
+          syncProfileFromAuth(authSession.user),
+          5000,
+          "Profilsynk mot cloud tog for lang tid.",
+        );
         if (!cancelled) {
-          await hydrateCloudData(
-            authSession.user.id,
-            normalizeSession({
-              ...storedSession,
-              currentUserId: authSession.user.id,
-            }),
+          await withTimeout(
+            hydrateCloudData(
+              authSession.user.id,
+              normalizeSession({
+                ...storedSession,
+                currentUserId: authSession.user.id,
+              }),
+            ),
+            5000,
+            "Laddning av hushallet tog for lang tid.",
           );
           setCloudHydrated(true);
           setCloudLoadError(null);
@@ -1454,7 +1491,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
       } catch (error) {
         if (!cancelled) {
           console.error("Failed to initialize cloud", error);
-          setCloudLoadError("Kunde inte läsa ditt hushåll från cloud.");
+          setCloudLoadError(resolveErrorMessage(error, "Kunde inte lasa ditt hushall fran cloud."));
           setCloudHydrated(false);
           setCloudLive(false);
           setReady(true);
@@ -1505,9 +1542,13 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
 
       void syncProfileFromAuth(authSession.user)
         .then(() =>
-          hydrateCloudData(
-            authSession.user.id,
-            hydratedSession,
+          withTimeout(
+            hydrateCloudData(
+              authSession.user.id,
+              hydratedSession,
+            ),
+            5000,
+            "Laddning av hushallet tog for lang tid.",
           ),
         )
         .then(() => {
@@ -1516,7 +1557,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
         })
         .catch((error) => {
           console.error("Failed to handle auth change", error);
-          setCloudLoadError("Kunde inte läsa ditt hushåll från cloud.");
+          setCloudLoadError(resolveErrorMessage(error, "Kunde inte lasa ditt hushall fran cloud."));
           setCloudHydrated(false);
           setCloudLive(false);
         })
