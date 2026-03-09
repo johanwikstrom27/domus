@@ -728,6 +728,16 @@ function normalizeEmail(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function buildUserFromAuth(authUser: SupabaseUser): User {
+  return {
+    id: authUser.id,
+    email: authUser.email ?? "",
+    firstName: String(authUser.user_metadata.first_name ?? authUser.user_metadata.firstName ?? "").trim() || "Domus",
+    lastName: String(authUser.user_metadata.last_name ?? authUser.user_metadata.lastName ?? "").trim() || "User",
+    createdAt: toTimestamp(authUser.created_at),
+  };
+}
+
 function extractToken(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) {
@@ -1019,6 +1029,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
 
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [cloudLive, setCloudLive] = useState(CLOUD_ENABLED);
+  const [authUser, setAuthUser] = useState<SupabaseUser | null>(null);
 
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const channelRef = useRef<BroadcastChannel | null>(null);
@@ -1350,11 +1361,23 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
 
         if (!authSession?.user) {
           if (!cancelled) {
+            setAuthUser(null);
             setSession((prev) => normalizeSession({ ...prev, currentUserId: null }));
             setReady(true);
             setCloudLive(true);
           }
           return;
+        }
+
+        if (!cancelled) {
+          const nextSession = normalizeSession({
+            ...storedSession,
+            currentUserId: authSession.user.id,
+          });
+          setAuthUser(authSession.user);
+          setSession(nextSession);
+          saveSession(nextSession);
+          setReady(true);
         }
 
         await syncProfileFromAuth(authSession.user);
@@ -1366,7 +1389,6 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
               currentUserId: authSession.user.id,
             }),
           );
-          setReady(true);
         }
       } catch (error) {
         if (!cancelled) {
@@ -1383,20 +1405,29 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
     } = supabase.auth.onAuthStateChange((_event: string, authSession: SupabaseSession | null) => {
       const nextSession = normalizeSession(parseJson<SessionState>(localStorage.getItem(SESSION_STORAGE_KEY), DEFAULT_SESSION));
       if (!authSession?.user) {
+        setAuthUser(null);
         setDb(createDefaultDb());
-        setSession({ ...nextSession, currentUserId: null });
+        const clearedSession = { ...nextSession, currentUserId: null };
+        setSession(clearedSession);
+        saveSession(clearedSession);
         setReady(true);
         return;
       }
+
+      const hydratedSession = normalizeSession({
+        ...nextSession,
+        currentUserId: authSession.user.id,
+      });
+      setAuthUser(authSession.user);
+      setSession(hydratedSession);
+      saveSession(hydratedSession);
+      setReady(true);
 
       void syncProfileFromAuth(authSession.user)
         .then(() =>
           hydrateCloudData(
             authSession.user.id,
-            normalizeSession({
-              ...nextSession,
-              currentUserId: authSession.user.id,
-            }),
+            hydratedSession,
           ),
         )
         .catch((error) => pushCloudError("Failed to handle auth change", error))
@@ -1458,11 +1489,13 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
         window.clearTimeout(cloudRefreshTimerRef.current);
       }
     };
-  }, [hydrateCloudData, pushCloudError, supabase, syncProfileFromAuth]);
+  }, [hydrateCloudData, pushCloudError, saveSession, supabase, syncProfileFromAuth]);
 
   const currentUser = useMemo(
-    () => db.users.find((user) => user.id === session.currentUserId) ?? null,
-    [db.users, session.currentUserId],
+    () =>
+      db.users.find((user) => user.id === session.currentUserId) ??
+      (authUser && session.currentUserId === authUser.id ? buildUserFromAuth(authUser) : null),
+    [authUser, db.users, session.currentUserId],
   );
 
   const myHouseholds = useMemo(() => {
@@ -2003,7 +2036,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
       event.preventDefault();
 
       if (supabase) {
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabase.auth.signInWithPassword({
           email: normalizeEmail(loginEmail),
           password: loginPassword,
         });
@@ -2011,6 +2044,18 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
         if (error) {
           pushToast(error.message === "Invalid login credentials" ? "Fel e-post eller lösenord." : error.message);
           return;
+        }
+
+        if (data.user) {
+          setAuthUser(data.user);
+          const nextSession: SessionState = {
+            currentUserId: data.user.id,
+            activeHouseholdId: session.activeHouseholdId,
+            activeDwellingId: session.activeDwellingId,
+          };
+          setSession(nextSession);
+          saveSession(nextSession);
+          setReady(true);
         }
 
         pushToast("Välkommen tillbaka.");
@@ -2039,7 +2084,18 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
       saveSession(nextSession);
       pushToast(`Välkommen tillbaka ${found.firstName}.`);
     },
-    [db.dwellings, db.households, db.users, loginEmail, loginPassword, pushToast, saveSession, supabase],
+    [
+      db.dwellings,
+      db.households,
+      db.users,
+      loginEmail,
+      loginPassword,
+      pushToast,
+      saveSession,
+      session.activeDwellingId,
+      session.activeHouseholdId,
+      supabase,
+    ],
   );
 
   const signup = useCallback(
@@ -2074,6 +2130,15 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
         }
 
         if (data.user) {
+          setAuthUser(data.user);
+          const nextSession: SessionState = {
+            currentUserId: data.user.id,
+            activeHouseholdId: null,
+            activeDwellingId: null,
+          };
+          setSession(nextSession);
+          saveSession(nextSession);
+          setReady(true);
           try {
             await syncProfileFromAuth(data.user);
           } catch (profileError) {
@@ -3447,6 +3512,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
 
   const logout = useCallback(async () => {
     const next = { ...DEFAULT_SESSION };
+    setAuthUser(null);
     setSession(next);
     saveSession(next);
 
