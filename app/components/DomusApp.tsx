@@ -307,6 +307,7 @@ interface CloudUserSettingRow {
 const DB_STORAGE_KEY = "domus_db_v1";
 const SESSION_STORAGE_KEY = "domus_session_v1";
 const CHANNEL_NAME = "domus_realtime_v1";
+const LOGOUT_STORAGE_KEY = "domus_logout_v1";
 const CLOUD_TABLES = {
   catalog: "domus_catalog_items",
   households: "domus_households",
@@ -736,6 +737,33 @@ function buildUserFromAuth(authUser: SupabaseUser): User {
     lastName: String(authUser.user_metadata.last_name ?? authUser.user_metadata.lastName ?? "").trim() || "User",
     createdAt: toTimestamp(authUser.created_at),
   };
+}
+
+function isLogoutPending() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  try {
+    return window.sessionStorage.getItem(LOGOUT_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function setLogoutPending(pending: boolean) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    if (pending) {
+      window.sessionStorage.setItem(LOGOUT_STORAGE_KEY, "1");
+      return;
+    }
+
+    window.sessionStorage.removeItem(LOGOUT_STORAGE_KEY);
+  } catch {}
 }
 
 function extractToken(value: string): string {
@@ -1355,6 +1383,24 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
 
     const initializeCloud = async () => {
       try {
+        if (isLogoutPending()) {
+          if (!cancelled) {
+            const clearedSession = { ...DEFAULT_SESSION };
+            setAuthUser(null);
+            setDb(createDefaultDb());
+            setSession(clearedSession);
+            saveSession(clearedSession);
+            setReady(true);
+            setCloudLive(true);
+          }
+
+          const { error } = await supabase.auth.signOut({ scope: "local" });
+          if (!error) {
+            setLogoutPending(false);
+          }
+          return;
+        }
+
         const {
           data: { session: authSession },
         } = await supabase.auth.getSession();
@@ -1362,7 +1408,10 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
         if (!authSession?.user) {
           if (!cancelled) {
             setAuthUser(null);
-            setSession((prev) => normalizeSession({ ...prev, currentUserId: null }));
+            setDb(createDefaultDb());
+            const clearedSession = { ...DEFAULT_SESSION };
+            setSession(clearedSession);
+            saveSession(clearedSession);
             setReady(true);
             setCloudLive(true);
           }
@@ -1404,10 +1453,24 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event: string, authSession: SupabaseSession | null) => {
       const nextSession = normalizeSession(parseJson<SessionState>(localStorage.getItem(SESSION_STORAGE_KEY), DEFAULT_SESSION));
+      if (isLogoutPending()) {
+        setAuthUser(null);
+        setDb(createDefaultDb());
+        const clearedSession = { ...DEFAULT_SESSION };
+        setSession(clearedSession);
+        saveSession(clearedSession);
+        setReady(true);
+
+        if (!authSession?.user) {
+          setLogoutPending(false);
+        }
+        return;
+      }
+
       if (!authSession?.user) {
         setAuthUser(null);
         setDb(createDefaultDb());
-        const clearedSession = { ...nextSession, currentUserId: null };
+        const clearedSession = { ...DEFAULT_SESSION };
         setSession(clearedSession);
         saveSession(clearedSession);
         setReady(true);
@@ -2047,6 +2110,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
         }
 
         if (data.user) {
+          setLogoutPending(false);
           const immediateUser = buildUserFromAuth(data.user);
           setAuthUser(data.user);
           setDb((prev) =>
@@ -2140,6 +2204,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
         }
 
         if (data.user) {
+          setLogoutPending(false);
           const immediateUser = buildUserFromAuth(data.user);
           setAuthUser(data.user);
           setDb((prev) =>
@@ -3532,18 +3597,35 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
   const logout = useCallback(() => {
     const nextSession = { ...DEFAULT_SESSION };
     const nextDb = createDefaultDb();
+    setLogoutPending(true);
     setAuthUser(null);
     setDb(nextDb);
     saveDb(nextDb);
     setSession(nextSession);
     saveSession(nextSession);
     setActiveShoppingListId(null);
+    setAuthMode("login");
+    setLoginPassword("");
     setReady(true);
-    void supabase?.auth.signOut({ scope: "local" }).catch((error) => {
-      pushCloudError("Failed to sign out", error);
-    });
-    window.location.replace(`${window.location.pathname}${window.location.search}`);
-  }, [pushCloudError, saveDb, saveSession, supabase]);
+    if (!supabase) {
+      setLogoutPending(false);
+      return;
+    }
+
+    void supabase.auth
+      .signOut({ scope: "local" })
+      .then(({ error }) => {
+        if (error) {
+          console.error("Failed to sign out", error);
+          return;
+        }
+
+        setLogoutPending(false);
+      })
+      .catch((error) => {
+        console.error("Failed to sign out", error);
+      });
+  }, [saveDb, saveSession, supabase]);
 
   const inviteFromUrl = useMemo(() => extractToken(initialJoinToken ?? ""), [initialJoinToken]);
 
