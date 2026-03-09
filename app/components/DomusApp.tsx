@@ -1149,6 +1149,10 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
         .catch(() => undefined)
         .then(async () => {
           const visibleHouseholds = nextDb.households.filter((household) => household.memberIds.includes(userId));
+          if (!visibleHouseholds.length) {
+            return;
+          }
+
           const visibleHouseholdIds = visibleHouseholds.map((household) => household.id);
           const previousVisibleHouseholdIds = prevDb.households.filter((household) => household.memberIds.includes(userId)).map((household) => household.id);
           const removedHouseholdIds = previousVisibleHouseholdIds.filter((householdId) => !visibleHouseholdIds.includes(householdId));
