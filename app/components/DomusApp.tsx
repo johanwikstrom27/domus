@@ -3530,18 +3530,25 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
   }, [activeHousehold, currentUser, db.dwellings, mutateDb, mutateSession, myHouseholds, pushToast]);
 
   const logout = useCallback(async () => {
-    const next = { ...DEFAULT_SESSION };
-    setAuthUser(null);
-    setSession(next);
-    saveSession(next);
-
     if (supabase) {
-      const { error } = await supabase.auth.signOut();
+      const { error } = await supabase.auth.signOut({ scope: "local" });
       if (error) {
         pushCloudError("Failed to sign out", error);
+        return;
       }
     }
-  }, [pushCloudError, saveSession, supabase]);
+
+    const nextSession = { ...DEFAULT_SESSION };
+    const nextDb = createDefaultDb();
+    setAuthUser(null);
+    setDb(nextDb);
+    saveDb(nextDb);
+    setSession(nextSession);
+    saveSession(nextSession);
+    setActiveShoppingListId(null);
+    setReady(true);
+    window.location.assign(`${window.location.pathname}${window.location.search}`);
+  }, [pushCloudError, saveDb, saveSession, supabase]);
 
   const inviteFromUrl = useMemo(() => extractToken(initialJoinToken ?? ""), [initialJoinToken]);
 
