@@ -724,6 +724,10 @@ function normalizeText(value: string): string {
     .replace(/\s+/g, " ");
 }
 
+function normalizeEmail(value: string): string {
+  return value.trim().toLowerCase();
+}
+
 function extractToken(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) {
@@ -1996,7 +2000,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
 
       if (supabase) {
         const { error } = await supabase.auth.signInWithPassword({
-          email: loginEmail.trim(),
+          email: normalizeEmail(loginEmail),
           password: loginPassword,
         });
 
@@ -2009,8 +2013,8 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
         return;
       }
 
-      const email = normalizeText(loginEmail);
-      const found = db.users.find((user) => normalizeText(user.email) === email && user.password === loginPassword);
+      const email = normalizeEmail(loginEmail);
+      const found = db.users.find((user) => normalizeEmail(user.email) === email && user.password === loginPassword);
       if (!found) {
         pushToast("Fel e-post eller lösenord.");
         return;
@@ -2040,7 +2044,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
 
       const firstName = signupFirstName.trim();
       const lastName = signupLastName.trim();
-      const email = normalizeText(signupEmail);
+      const email = normalizeEmail(signupEmail);
       const password = signupPassword;
 
       if (!firstName || !lastName || !email || !password) {
@@ -2089,7 +2093,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
         return;
       }
 
-      const exists = db.users.some((user) => normalizeText(user.email) === email);
+      const exists = db.users.some((user) => normalizeEmail(user.email) === email);
       if (exists) {
         pushToast("Det finns redan ett konto med den e-posten.");
         return;
