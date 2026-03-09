@@ -2059,6 +2059,9 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
         }
 
         pushToast("Välkommen tillbaka.");
+        window.setTimeout(() => {
+          window.location.reload();
+        }, 120);
         return;
       }
 
