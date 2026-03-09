@@ -1383,7 +1383,14 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
 
     const initializeCloud = async () => {
       try {
-        if (isLogoutPending()) {
+        const logoutPending = isLogoutPending();
+        const {
+          data: { session: authSession },
+        } = await supabase.auth.getSession();
+
+        if (logoutPending && authSession?.user) {
+          setLogoutPending(false);
+        } else if (logoutPending) {
           if (!cancelled) {
             const clearedSession = { ...DEFAULT_SESSION };
             setAuthUser(null);
@@ -1395,15 +1402,12 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
           }
 
           const { error } = await supabase.auth.signOut({ scope: "local" });
-          if (!error) {
-            setLogoutPending(false);
+          if (error) {
+            console.error("Failed to finish pending logout", error);
           }
+          setLogoutPending(false);
           return;
         }
-
-        const {
-          data: { session: authSession },
-        } = await supabase.auth.getSession();
 
         if (!authSession?.user) {
           if (!cancelled) {
@@ -1454,17 +1458,18 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
     } = supabase.auth.onAuthStateChange((_event: string, authSession: SupabaseSession | null) => {
       const nextSession = normalizeSession(parseJson<SessionState>(localStorage.getItem(SESSION_STORAGE_KEY), DEFAULT_SESSION));
       if (isLogoutPending()) {
-        setAuthUser(null);
-        setDb(createDefaultDb());
-        const clearedSession = { ...DEFAULT_SESSION };
-        setSession(clearedSession);
-        saveSession(clearedSession);
-        setReady(true);
-
-        if (!authSession?.user) {
+        if (authSession?.user) {
           setLogoutPending(false);
+        } else {
+          setAuthUser(null);
+          setDb(createDefaultDb());
+          const clearedSession = { ...DEFAULT_SESSION };
+          setSession(clearedSession);
+          saveSession(clearedSession);
+          setReady(true);
+          setLogoutPending(false);
+          return;
         }
-        return;
       }
 
       if (!authSession?.user) {
@@ -2132,7 +2137,6 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
         }
 
         pushToast("Välkommen tillbaka.");
-        window.location.assign(`${window.location.pathname}${window.location.search}`);
         return;
       }
 
@@ -3617,7 +3621,6 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
       .then(({ error }) => {
         if (error) {
           console.error("Failed to sign out", error);
-          return;
         }
 
         setLogoutPending(false);
