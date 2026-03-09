@@ -3535,7 +3535,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
             <div className="brand-mark compact">
               <Image src="/icons/logotype.png" alt="Domus logotyp" width={72} height={72} className="brand-logo" priority />
             </div>
-            <div>
+            <div className="auth-copy">
               <p className="eyebrow">{cloudLive ? "Live redo" : "Lokal testmiljö"}</p>
               <h1>Domus</h1>
               <p>Delat hushåll, live-listor och en lugnare vardag i samma app.</p>
@@ -3543,16 +3543,16 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
           </div>
 
           <div className="auth-toggle">
-            <button className={authMode === "login" ? "active" : ""} onClick={() => setAuthMode("login")}>
+            <button type="button" className={authMode === "login" ? "active" : ""} onClick={() => setAuthMode("login")}>
               Logga in
             </button>
-            <button className={authMode === "signup" ? "active" : ""} onClick={() => setAuthMode("signup")}>
+            <button type="button" className={authMode === "signup" ? "active" : ""} onClick={() => setAuthMode("signup")}>
               Skapa konto
             </button>
           </div>
 
           {authMode === "login" ? (
-            <form onSubmit={login} className="stack">
+            <form onSubmit={login} className="stack auth-form">
               <label>
                 E-post
                 <input
@@ -3572,10 +3572,10 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
                   required
                 />
               </label>
-              <button type="submit">Logga in</button>
+              <button type="submit" className="auth-submit">Logga in</button>
             </form>
           ) : (
-            <form onSubmit={signup} className="stack">
+            <form onSubmit={signup} className="stack auth-form">
               <label>
                 Förnamn
                 <input
@@ -3613,7 +3613,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
                   required
                 />
               </label>
-              <button type="submit">Skapa konto</button>
+              <button type="submit" className="auth-submit">Skapa konto</button>
             </form>
           )}
 
@@ -3633,7 +3633,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
       <main className="auth-shell">
         <section className="auth-card wide">
           <div className="auth-brand">
-            <div>
+            <div className="auth-copy">
               <p className="eyebrow">Hej {currentUser.firstName}</p>
               <h1>Skapa ditt hushåll</h1>
               <p>Starta ett nytt hem eller anslut via länk för att testa delad realtime direkt.</p>
