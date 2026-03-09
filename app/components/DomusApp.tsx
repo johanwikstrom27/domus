@@ -1057,6 +1057,8 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
 
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [cloudLive, setCloudLive] = useState(CLOUD_ENABLED);
+  const [cloudHydrated, setCloudHydrated] = useState(!CLOUD_ENABLED);
+  const [cloudLoadError, setCloudLoadError] = useState<string | null>(null);
   const [authUser, setAuthUser] = useState<SupabaseUser | null>(null);
 
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
@@ -1372,6 +1374,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
     if (!supabase) {
       setReady(true);
       setCloudLive(false);
+      setCloudHydrated(true);
       return () => {
         window.removeEventListener("storage", handleStorage);
         channel.removeEventListener("message", handleChannel);
@@ -1383,14 +1386,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
 
     const initializeCloud = async () => {
       try {
-        const logoutPending = isLogoutPending();
-        const {
-          data: { session: authSession },
-        } = await supabase.auth.getSession();
-
-        if (logoutPending && authSession?.user) {
-          setLogoutPending(false);
-        } else if (logoutPending) {
+        if (isLogoutPending()) {
           if (!cancelled) {
             const clearedSession = { ...DEFAULT_SESSION };
             setAuthUser(null);
@@ -1399,6 +1395,8 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
             saveSession(clearedSession);
             setReady(true);
             setCloudLive(true);
+            setCloudHydrated(true);
+            setCloudLoadError(null);
           }
 
           const { error } = await supabase.auth.signOut({ scope: "local" });
@@ -1409,6 +1407,10 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
           return;
         }
 
+        const {
+          data: { session: authSession },
+        } = await supabase.auth.getSession();
+
         if (!authSession?.user) {
           if (!cancelled) {
             setAuthUser(null);
@@ -1418,6 +1420,8 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
             saveSession(clearedSession);
             setReady(true);
             setCloudLive(true);
+            setCloudHydrated(true);
+            setCloudLoadError(null);
           }
           return;
         }
@@ -1431,6 +1435,8 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
           setSession(nextSession);
           saveSession(nextSession);
           setReady(true);
+          setCloudHydrated(false);
+          setCloudLoadError(null);
         }
 
         await syncProfileFromAuth(authSession.user);
@@ -1442,10 +1448,15 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
               currentUserId: authSession.user.id,
             }),
           );
+          setCloudHydrated(true);
+          setCloudLoadError(null);
         }
       } catch (error) {
         if (!cancelled) {
-          pushCloudError("Failed to initialize cloud", error);
+          console.error("Failed to initialize cloud", error);
+          setCloudLoadError("Kunde inte läsa ditt hushåll från cloud.");
+          setCloudHydrated(false);
+          setCloudLive(false);
           setReady(true);
         }
       }
@@ -1458,18 +1469,15 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
     } = supabase.auth.onAuthStateChange((_event: string, authSession: SupabaseSession | null) => {
       const nextSession = normalizeSession(parseJson<SessionState>(localStorage.getItem(SESSION_STORAGE_KEY), DEFAULT_SESSION));
       if (isLogoutPending()) {
-        if (authSession?.user) {
-          setLogoutPending(false);
-        } else {
-          setAuthUser(null);
-          setDb(createDefaultDb());
-          const clearedSession = { ...DEFAULT_SESSION };
-          setSession(clearedSession);
-          saveSession(clearedSession);
-          setReady(true);
-          setLogoutPending(false);
-          return;
-        }
+        setAuthUser(null);
+        setDb(createDefaultDb());
+        const clearedSession = { ...DEFAULT_SESSION };
+        setSession(clearedSession);
+        saveSession(clearedSession);
+        setReady(true);
+        setCloudHydrated(true);
+        setCloudLoadError(null);
+        return;
       }
 
       if (!authSession?.user) {
@@ -1479,6 +1487,8 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
         setSession(clearedSession);
         saveSession(clearedSession);
         setReady(true);
+        setCloudHydrated(true);
+        setCloudLoadError(null);
         return;
       }
 
@@ -1490,6 +1500,8 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
       setSession(hydratedSession);
       saveSession(hydratedSession);
       setReady(true);
+      setCloudHydrated(false);
+      setCloudLoadError(null);
 
       void syncProfileFromAuth(authSession.user)
         .then(() =>
@@ -1498,7 +1510,16 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
             hydratedSession,
           ),
         )
-        .catch((error) => pushCloudError("Failed to handle auth change", error))
+        .then(() => {
+          setCloudHydrated(true);
+          setCloudLoadError(null);
+        })
+        .catch((error) => {
+          console.error("Failed to handle auth change", error);
+          setCloudLoadError("Kunde inte läsa ditt hushåll från cloud.");
+          setCloudHydrated(false);
+          setCloudLive(false);
+        })
         .finally(() => setReady(true));
     });
 
@@ -2104,6 +2125,8 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
       event.preventDefault();
 
       if (supabase) {
+        setLogoutPending(false);
+        setCloudLoadError(null);
         const { data, error } = await supabase.auth.signInWithPassword({
           email: normalizeEmail(loginEmail),
           password: loginPassword,
@@ -2191,6 +2214,8 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
       }
 
       if (supabase) {
+        setLogoutPending(false);
+        setCloudLoadError(null);
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
@@ -3632,6 +3657,12 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
 
   const inviteFromUrl = useMemo(() => extractToken(initialJoinToken ?? ""), [initialJoinToken]);
 
+  const retryCloudBootstrap = useCallback(() => {
+    setCloudLoadError(null);
+    setCloudHydrated(false);
+    window.location.replace(`${window.location.pathname}${window.location.search}`);
+  }, []);
+
   useEffect(() => {
     if (ready && inviteFromUrl && currentUser && myHouseholds.length === 0) {
       setJoinTokenInput(inviteFromUrl);
@@ -3806,6 +3837,44 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
         />
       </main>
     );
+  }
+
+  if (supabase && cloudLoadError) {
+    return (
+      <main className="auth-shell">
+        <section className="auth-card wide">
+          <div className="auth-brand">
+            <div className="auth-copy">
+              <p className="eyebrow">Cloud-fel</p>
+              <h1>Kunde inte ladda hushållet</h1>
+              <p>{cloudLoadError}</p>
+            </div>
+            <span className="stat-pill">Ingen data har skrivits över</span>
+          </div>
+          <div className="split-grid">
+            <div className="stack card-block">
+              <h2>Försök igen</h2>
+              <p className="small">Ladda om cloud-data innan du skapar eller går med i ett nytt hushåll.</p>
+              <button type="button" onClick={retryCloudBootstrap}>Ladda om cloud</button>
+            </div>
+            <div className="stack card-block">
+              <h2>Konto</h2>
+              <p className="small">{currentUser.email}</p>
+              <button type="button" className="ghost subtle" onClick={logout}>Logga ut</button>
+            </div>
+          </div>
+        </section>
+
+        <ToastStack
+          toasts={toasts}
+          onDismiss={(id) => setToasts((prev) => prev.filter((item) => item.id !== id))}
+        />
+      </main>
+    );
+  }
+
+  if (supabase && !cloudHydrated) {
+    return <main className="app-shell loading-shell">Synkar hushallet...</main>;
   }
 
   if (myHouseholds.length === 0) {
