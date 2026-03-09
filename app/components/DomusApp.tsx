@@ -2047,7 +2047,16 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
         }
 
         if (data.user) {
+          const immediateUser = buildUserFromAuth(data.user);
           setAuthUser(data.user);
+          setDb((prev) =>
+            normalizeDb({
+              ...prev,
+              users: prev.users.some((user) => user.id === immediateUser.id)
+                ? prev.users.map((user) => (user.id === immediateUser.id ? { ...user, ...immediateUser } : user))
+                : [...prev.users, immediateUser],
+            }),
+          );
           const nextSession: SessionState = {
             currentUserId: data.user.id,
             activeHouseholdId: session.activeHouseholdId,
@@ -2059,9 +2068,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
         }
 
         pushToast("Välkommen tillbaka.");
-        window.setTimeout(() => {
-          window.location.reload();
-        }, 120);
+        window.location.assign(`${window.location.pathname}${window.location.search}`);
         return;
       }
 
@@ -2133,7 +2140,16 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
         }
 
         if (data.user) {
+          const immediateUser = buildUserFromAuth(data.user);
           setAuthUser(data.user);
+          setDb((prev) =>
+            normalizeDb({
+              ...prev,
+              users: prev.users.some((user) => user.id === immediateUser.id)
+                ? prev.users.map((user) => (user.id === immediateUser.id ? { ...user, ...immediateUser } : user))
+                : [...prev.users, immediateUser],
+            }),
+          );
           const nextSession: SessionState = {
             currentUserId: data.user.id,
             activeHouseholdId: null,
