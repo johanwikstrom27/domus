@@ -5,6 +5,7 @@ import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useSta
 import Image from "next/image";
 import type { Session as SupabaseSession, User as SupabaseUser } from "@supabase/supabase-js";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { DEFAULT_CATEGORIES, SEED_CATALOG } from "./domusCatalogSeed";
 
 type Unit = "st" | "kg" | "g" | "l" | "dl" | "ml" | "pkt" | "burk";
 
@@ -54,6 +55,7 @@ interface Dwelling {
 
 interface CatalogItem {
   id: string;
+  householdId: string;
   name: string;
   category: string;
   defaultQuantity: number;
@@ -269,6 +271,7 @@ interface CloudInviteRow {
 }
 
 interface CloudStatePayload {
+  catalog?: CatalogItem[];
   dwellings?: Dwelling[];
   learning?: LearningRecord[];
   shoppingLists?: ShoppingList[];
@@ -304,6 +307,9 @@ interface CloudUserSettingRow {
   category_overrides: Record<string, string> | null;
 }
 
+type TabId = "overview" | "shopping" | "recipes" | "todo" | "settings" | "catalog";
+type MainTabId = Exclude<TabId, "settings" | "catalog">;
+
 const DB_STORAGE_KEY = "domus_db_v1";
 const SESSION_STORAGE_KEY = "domus_session_v1";
 const CHANNEL_NAME = "domus_realtime_v1";
@@ -319,48 +325,6 @@ const CLOUD_TABLES = {
 } as const;
 const CLOUD_ENABLED = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
-const DEFAULT_CATEGORIES = [
-  "Toa & Badrum",
-  "Kök",
-  "Skafferi",
-  "Mejeri",
-  "Kylvaror",
-  "Frukt & grönt",
-  "Snacks",
-  "Dryck",
-];
-
-const SEED_CATALOG: CatalogItem[] = [
-  { id: "banana", name: "Banan", category: "Frukt & grönt", defaultQuantity: 6, defaultUnit: "st", units: ["st", "kg"] },
-  { id: "apple", name: "Äpple", category: "Frukt & grönt", defaultQuantity: 6, defaultUnit: "st", units: ["st", "kg"] },
-  { id: "cucumber", name: "Gurka", category: "Frukt & grönt", defaultQuantity: 1, defaultUnit: "st", units: ["st"] },
-  { id: "tomato", name: "Tomat", category: "Frukt & grönt", defaultQuantity: 6, defaultUnit: "st", units: ["st", "kg"] },
-  { id: "potato", name: "Potatis", category: "Frukt & grönt", defaultQuantity: 1, defaultUnit: "kg", units: ["kg", "g"] },
-  { id: "milk", name: "Mjölk", category: "Mejeri", defaultQuantity: 1, defaultUnit: "l", units: ["l", "dl"] },
-  { id: "yoghurt", name: "Yoghurt", category: "Mejeri", defaultQuantity: 1, defaultUnit: "l", units: ["l", "dl"] },
-  { id: "butter", name: "Smör", category: "Mejeri", defaultQuantity: 1, defaultUnit: "pkt", units: ["pkt", "g"] },
-  { id: "cheese", name: "Ost", category: "Mejeri", defaultQuantity: 1, defaultUnit: "pkt", units: ["pkt", "g"] },
-  { id: "bread", name: "Bröd", category: "Skafferi", defaultQuantity: 1, defaultUnit: "pkt", units: ["pkt", "st"] },
-  { id: "eggs", name: "Ägg", category: "Kylvaror", defaultQuantity: 12, defaultUnit: "st", units: ["st"] },
-  { id: "coffee", name: "Kaffe", category: "Skafferi", defaultQuantity: 1, defaultUnit: "pkt", units: ["pkt", "g"] },
-  { id: "rice", name: "Ris", category: "Skafferi", defaultQuantity: 1, defaultUnit: "kg", units: ["kg", "g"] },
-  { id: "pasta", name: "Pasta", category: "Skafferi", defaultQuantity: 1, defaultUnit: "pkt", units: ["pkt", "g"] },
-  { id: "flour", name: "Mjöl", category: "Skafferi", defaultQuantity: 1, defaultUnit: "kg", units: ["kg", "g"] },
-  { id: "salt", name: "Salt", category: "Skafferi", defaultQuantity: 1, defaultUnit: "pkt", units: ["pkt"] },
-  { id: "chicken", name: "Kyckling", category: "Kylvaror", defaultQuantity: 600, defaultUnit: "g", units: ["g", "kg", "pkt"] },
-  { id: "minced", name: "Köttfärs", category: "Kylvaror", defaultQuantity: 500, defaultUnit: "g", units: ["g", "kg", "pkt"] },
-  { id: "salmon", name: "Lax", category: "Kylvaror", defaultQuantity: 500, defaultUnit: "g", units: ["g", "kg", "pkt"] },
-  { id: "peas", name: "Ärtor", category: "Kylvaror", defaultQuantity: 1, defaultUnit: "pkt", units: ["pkt"] },
-  { id: "berries", name: "Bär", category: "Kylvaror", defaultQuantity: 1, defaultUnit: "pkt", units: ["pkt", "g"] },
-  { id: "soap", name: "Handtvål", category: "Toa & Badrum", defaultQuantity: 1, defaultUnit: "st", units: ["st", "ml"] },
-  { id: "paper", name: "Toapapper", category: "Toa & Badrum", defaultQuantity: 1, defaultUnit: "pkt", units: ["pkt"] },
-  { id: "detergent", name: "Tvättmedel", category: "Toa & Badrum", defaultQuantity: 1, defaultUnit: "pkt", units: ["pkt", "ml"] },
-  { id: "toothbrush", name: "Tandborste", category: "Toa & Badrum", defaultQuantity: 2, defaultUnit: "st", units: ["st"] },
-  { id: "frying-pan", name: "Stekpanna", category: "Kök", defaultQuantity: 1, defaultUnit: "st", units: ["st"] },
-  { id: "soda", name: "Mineralvatten", category: "Dryck", defaultQuantity: 6, defaultUnit: "st", units: ["st", "l"] },
-  { id: "candy", name: "Godis", category: "Snacks", defaultQuantity: 1, defaultUnit: "pkt", units: ["pkt", "g"] },
-];
-
 const LEGACY_RECIPE_IDS = new Set(["pasta-bolognese", "salmon-bowl", "frukostbricka"]);
 const RECIPE_LIBRARY: Recipe[] = [];
 
@@ -372,13 +336,16 @@ function normalizeCategoryName(category: string): string {
   if (normalized === "skafferi") return "Skafferi";
   if (normalized === "mejeri") return "Mejeri";
   if (normalized === "kylvaror") return "Kylvaror";
+  if (normalized === "frys") return "Frys";
   if (normalized === "frukt & gront") return "Frukt & grönt";
   if (normalized === "snacks") return "Snacks";
   if (normalized === "dryck") return "Dryck";
+  if (normalized === "barn") return "Barn";
+  if (normalized === "djur") return "Djur";
 
   // Legacy categories
   if (normalized === "brod & frukost" || normalized === "torrvaror") return "Skafferi";
-  if (normalized === "kott & fisk" || normalized === "frys") return "Kylvaror";
+  if (normalized === "kott & fisk") return "Kylvaror";
   if (normalized === "hygien") return "Toa & Badrum";
   if (normalized === "ovrigt") return "Snacks";
 
@@ -412,6 +379,72 @@ function normalizeCategoryOrder(categories: string[]): string[] {
   return normalized;
 }
 
+function uniqueUnits(units: Unit[]): Unit[] {
+  return [...new Set(units)];
+}
+
+function createSeedCatalogForHousehold(householdId: string): CatalogItem[] {
+  return SEED_CATALOG.map((item) => ({
+    ...item,
+    householdId,
+    category: normalizeCategoryName(item.category),
+    units: uniqueUnits(item.units as Unit[]),
+  }));
+}
+
+function cloneCatalogForHousehold(catalog: CatalogItem[], householdId: string): CatalogItem[] {
+  return catalog.map((item) => ({
+    ...item,
+    householdId,
+    category: normalizeCategoryName(item.category),
+    units: uniqueUnits((item.units?.length ? item.units : [item.defaultUnit]) as Unit[]),
+  }));
+}
+
+function normalizeCatalogRecords(
+  catalog: Array<CatalogItem | (Omit<CatalogItem, "householdId"> & { householdId?: string })>,
+  households: Household[],
+): CatalogItem[] {
+  const itemsWithHousehold = catalog
+    .filter((item): item is CatalogItem => typeof item.householdId === "string" && item.householdId.length > 0)
+    .map((item) => ({
+      ...item,
+      category: normalizeCategoryName(item.category),
+      units: uniqueUnits((item.units?.length ? item.units : [item.defaultUnit]) as Unit[]),
+    }));
+
+  if (itemsWithHousehold.length > 0) {
+    const missingHouseholdIds = households
+      .map((household) => household.id)
+      .filter((householdId) => !itemsWithHousehold.some((item) => item.householdId === householdId));
+
+    return [
+      ...itemsWithHousehold,
+      ...missingHouseholdIds.flatMap((householdId) => createSeedCatalogForHousehold(householdId)),
+    ];
+  }
+
+  const legacyCatalog = (catalog.length ? catalog : SEED_CATALOG).map((item) => ({
+    id: item.id,
+    name: item.name,
+    category: normalizeCategoryName(item.category),
+    defaultQuantity: item.defaultQuantity,
+    defaultUnit: item.defaultUnit,
+    units: uniqueUnits((item.units?.length ? item.units : [item.defaultUnit]) as Unit[]),
+  }));
+
+  if (!households.length) {
+    return [];
+  }
+
+  return households.flatMap((household) =>
+    legacyCatalog.map((item) => ({
+      ...item,
+      householdId: household.id,
+    })),
+  );
+}
+
 const DEFAULT_SESSION: SessionState = {
   currentUserId: null,
   activeHouseholdId: null,
@@ -423,7 +456,7 @@ function createDefaultDb(): DomusDB {
     users: [],
     households: [],
     dwellings: [],
-    catalog: [...SEED_CATALOG],
+    catalog: [],
     shoppingLists: [],
     learning: [],
     shopping: [],
@@ -453,11 +486,8 @@ function parseJson<T>(raw: string | null, fallback: T): T {
 
 function normalizeDb(raw: DomusDB): DomusDB {
   const persistedRecipes = (raw.recipes ?? []).filter((recipe) => !LEGACY_RECIPE_IDS.has(recipe.id));
-  const persistedCatalog = raw.catalog?.length ? raw.catalog : SEED_CATALOG;
-  const normalizedCatalog = persistedCatalog.map((item) => ({
-    ...item,
-    category: normalizeCategoryName(item.category),
-  }));
+  const normalizedHouseholds = raw.households ?? [];
+  const normalizedCatalog = normalizeCatalogRecords(raw.catalog ?? [], normalizedHouseholds);
   const persistedShoppingLists = (raw.shoppingLists ?? []).map((list) => ({
     ...list,
     name: list.name?.trim() || "Inköpslista",
@@ -533,6 +563,7 @@ function normalizeDb(raw: DomusDB): DomusDB {
   return {
     ...createDefaultDb(),
     ...raw,
+    households: normalizedHouseholds,
     catalog: normalizedCatalog,
     shoppingLists: normalizedShoppingLists,
     shopping: normalizedShopping,
@@ -574,6 +605,7 @@ function buildCloudStateForHousehold(db: DomusDB, householdId: string): CloudSta
       : db.recipes.filter((recipe) => recipe.householdId === householdId);
 
   return {
+    catalog: db.catalog.filter((item) => item.householdId === householdId),
     dwellings: db.dwellings.filter((dwelling) => dwelling.householdId === householdId),
     learning: db.learning.filter((record) => dwellingIds.has(record.dwellingId)),
     shoppingLists: db.shoppingLists.filter((list) => list.householdId === householdId || dwellingIds.has(list.dwellingId)),
@@ -609,18 +641,6 @@ function buildDbFromCloudSnapshot(args: {
   } = args;
 
   const db = createDefaultDb();
-  db.catalog =
-    catalogRows.length > 0
-      ? catalogRows.map((item) => ({
-          id: item.id,
-          name: item.name,
-          category: normalizeCategoryName(item.category),
-          defaultQuantity: Number(item.default_quantity) || 1,
-          defaultUnit: item.default_unit,
-          units: ((item.units ?? [item.default_unit]) as string[]).filter(Boolean) as Unit[],
-        }))
-      : [...SEED_CATALOG];
-
   db.users = profileRows.map((profile) => ({
     id: profile.id,
     email: profile.email,
@@ -662,6 +682,13 @@ function buildDbFromCloudSnapshot(args: {
   const mergedState = stateRows.reduce<CloudStatePayload>(
     (acc, row) => {
       const payload = row.state ?? {};
+      acc.catalog = [
+        ...(acc.catalog ?? []),
+        ...((payload.catalog ?? []).map((item) => ({
+          ...item,
+          householdId: item.householdId ?? row.household_id,
+        })) as CatalogItem[]),
+      ];
       acc.dwellings = [...(acc.dwellings ?? []), ...(payload.dwellings ?? [])];
       acc.learning = [...(acc.learning ?? []), ...(payload.learning ?? [])];
       acc.shoppingLists = [...(acc.shoppingLists ?? []), ...(payload.shoppingLists ?? [])];
@@ -678,6 +705,26 @@ function buildDbFromCloudSnapshot(args: {
   );
 
   db.dwellings = mergedState.dwellings ?? [];
+  db.catalog = db.households.flatMap((household) => {
+    const householdCatalog = (mergedState.catalog ?? []).filter((item) => item.householdId === household.id);
+    if (householdCatalog.length > 0) {
+      return householdCatalog;
+    }
+
+    if (catalogRows.length > 0) {
+      return catalogRows.map((item) => ({
+        householdId: household.id,
+        id: item.id,
+        name: item.name,
+        category: normalizeCategoryName(item.category),
+        defaultQuantity: Number(item.default_quantity) || 1,
+        defaultUnit: item.default_unit,
+        units: ((item.units ?? [item.default_unit]) as string[]).filter(Boolean) as Unit[],
+      }));
+    }
+
+    return createSeedCatalogForHousehold(household.id);
+  });
   db.learning = mergedState.learning ?? [];
   db.shoppingLists = mergedState.shoppingLists ?? [];
   db.shopping = mergedState.shopping ?? [];
@@ -998,12 +1045,19 @@ function resolveTodoSummary(todo: Todo, todayKey: string): "today" | "overdue" |
   return null;
 }
 
-const TAB_ITEMS: Array<{ id: string; label: string }> = [
+const TAB_ITEMS: Array<{ id: TabId; label: string }> = [
   { id: "overview", label: "Översikt" },
   { id: "shopping", label: "Inköp" },
   { id: "recipes", label: "Recept" },
   { id: "todo", label: "To-do" },
   { id: "settings", label: "Inställningar" },
+];
+
+const MOBILE_TAB_ITEMS: Array<{ id: MainTabId; label: string }> = [
+  { id: "overview", label: "Översikt" },
+  { id: "shopping", label: "Inköp" },
+  { id: "recipes", label: "Recept" },
+  { id: "todo", label: "To-do" },
 ];
 
 const DWELLING_ICON_SUGGESTIONS = ["🏠", "🏡", "🏢", "🏘️", "🌲", "🏖️", "🛖", "🚐", "⛺", "🏕️"];
@@ -1016,11 +1070,54 @@ const VISIBLE_ACTIVITY_TYPES: ActivityType[] = [
   "recipe_created",
 ];
 
+function TabIcon({ id }: { id: MainTabId }) {
+  if (id === "overview") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4.5 11.5 12 5l7.5 6.5" />
+        <path d="M6.5 10.5V19h11v-8.5" />
+      </svg>
+    );
+  }
+
+  if (id === "shopping") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="9" cy="19" r="1.5" />
+        <circle cx="17" cy="19" r="1.5" />
+        <path d="M4 5h2l1.8 8.2a1 1 0 0 0 1 .8h7.7a1 1 0 0 0 1-.8L19 8H7.2" />
+      </svg>
+    );
+  }
+
+  if (id === "recipes") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M8 4v9" />
+        <path d="M5.5 4v5.5a2.5 2.5 0 0 0 5 0V4" />
+        <path d="M14.5 4.5c2 0 4 1.6 4 4.6V20" />
+        <path d="M14.5 12h4" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M9 6h10" />
+      <path d="M9 12h10" />
+      <path d="M9 18h10" />
+      <path d="m5 6 1.2 1.2L8.7 4.7" />
+      <path d="m5 12 1.2 1.2 2.5-2.5" />
+      <path d="m5 18 1.2 1.2 2.5-2.5" />
+    </svg>
+  );
+}
+
 export default function DomusApp({ initialJoinToken }: { initialJoinToken?: string }) {
   const [ready, setReady] = useState(false);
   const [db, setDb] = useState<DomusDB>(createDefaultDb());
   const [session, setSession] = useState<SessionState>(DEFAULT_SESSION);
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab] = useState<TabId>("overview");
   const [showAccountMenu, setShowAccountMenu] = useState(false);
 
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
@@ -1032,12 +1129,14 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
   const [signupPassword, setSignupPassword] = useState("");
 
   const [householdName, setHouseholdName] = useState("Vårt hushåll");
+  const [copyActiveCatalogToNewHousehold, setCopyActiveCatalogToNewHousehold] = useState(true);
   const [joinTokenInput, setJoinTokenInput] = useState(initialJoinToken ?? "");
 
   const [shoppingInput, setShoppingInput] = useState("");
   const [activeShoppingListId, setActiveShoppingListId] = useState<string | null>(null);
   const [pendingNewList, setPendingNewList] = useState<PendingNewList | null>(null);
   const [presetName, setPresetName] = useState("");
+  const [showTodoComposer, setShowTodoComposer] = useState(false);
 
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editQuantity, setEditQuantity] = useState("1");
@@ -1219,38 +1318,17 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
       cloudPersistRef.current = cloudPersistRef.current
         .catch(() => undefined)
         .then(async () => {
-          const visibleHouseholds = nextDb.households.filter((household) => household.memberIds.includes(userId));
-          if (!visibleHouseholds.length) {
-            return;
-          }
+      const visibleHouseholds = nextDb.households.filter((household) => household.memberIds.includes(userId));
+      if (!visibleHouseholds.length) {
+        return;
+      }
 
-          const visibleHouseholdIds = visibleHouseholds.map((household) => household.id);
-          const previousVisibleHouseholdIds = prevDb.households.filter((household) => household.memberIds.includes(userId)).map((household) => household.id);
-          const removedHouseholdIds = previousVisibleHouseholdIds.filter((householdId) => !visibleHouseholdIds.includes(householdId));
-          const currentCatalogIds = nextDb.catalog.map((item) => item.id);
-          const previousCatalogIds = prevDb.catalog.map((item) => item.id);
-          const removedCatalogIds = previousCatalogIds.filter((catalogId) => !currentCatalogIds.includes(catalogId));
-          const currentSetting = nextDb.settings.find((setting) => setting.userId === userId);
+      const visibleHouseholdIds = visibleHouseholds.map((household) => household.id);
+      const previousVisibleHouseholdIds = prevDb.households.filter((household) => household.memberIds.includes(userId)).map((household) => household.id);
+      const removedHouseholdIds = previousVisibleHouseholdIds.filter((householdId) => !visibleHouseholdIds.includes(householdId));
+      const currentSetting = nextDb.settings.find((setting) => setting.userId === userId);
 
-          const { error: catalogUpsertError } = await supabase.from(CLOUD_TABLES.catalog).upsert(
-            nextDb.catalog.map((item) => ({
-              id: item.id,
-              name: item.name,
-              category: item.category,
-              default_quantity: item.defaultQuantity,
-              default_unit: item.defaultUnit,
-              units: item.units,
-              updated_by: userId,
-            })),
-          );
-          if (catalogUpsertError) throw catalogUpsertError;
-
-          if (removedCatalogIds.length) {
-            const { error: catalogDeleteError } = await supabase.from(CLOUD_TABLES.catalog).delete().in("id", removedCatalogIds);
-            if (catalogDeleteError) throw catalogDeleteError;
-          }
-
-          if (currentSetting) {
+      if (currentSetting) {
             const { error: settingError } = await supabase.from(CLOUD_TABLES.settings).upsert({
               user_id: userId,
               daily_summary_enabled: currentSetting.dailySummaryEnabled,
@@ -1733,6 +1811,23 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
     [db.dwellings, session.activeDwellingId],
   );
 
+  const activeCatalog = useMemo(() => {
+    if (!activeHousehold) {
+      return [];
+    }
+
+    return db.catalog.filter((item) => item.householdId === activeHousehold.id);
+  }, [activeHousehold, db.catalog]);
+
+  const activeCatalogMap = useMemo(
+    () => new Map(activeCatalog.map((item) => [item.id, item])),
+    [activeCatalog],
+  );
+
+  useEffect(() => {
+    setCatalogDefaultDrafts({});
+  }, [activeHousehold?.id]);
+
   const latestShoppingListId = useMemo(() => {
     const dwellingId = activeDwelling?.id;
     if (!activeHousehold || !dwellingId) {
@@ -1747,6 +1842,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
   }, [activeHousehold, activeDwelling?.id, db.shoppingLists]);
 
   const openTodo = useCallback(() => {
+    setShowTodoComposer(false);
     setTab("todo");
   }, []);
 
@@ -1754,6 +1850,16 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
     setTab("shopping");
     setActiveShoppingListId(latestShoppingListId);
   }, [latestShoppingListId]);
+
+  const handleTabChange = useCallback((nextTab: TabId) => {
+    setTab(nextTab);
+    if (nextTab === "shopping") {
+      setActiveShoppingListId(null);
+    }
+    if (nextTab !== "todo") {
+      setShowTodoComposer(false);
+    }
+  }, []);
 
   const householdMembers = useMemo(() => {
     if (!activeHousehold) {
@@ -1789,11 +1895,8 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
   }, [activeSetting, currentUser, mutateDb]);
 
   const resolveCategoryForUser = useCallback(
-    (catalogItem: CatalogItem): string => {
-      const override = activeSetting?.categoryOverrides?.[catalogItem.id];
-      return override ?? catalogItem.category;
-    },
-    [activeSetting],
+    (catalogItem: CatalogItem): string => catalogItem.category,
+    [],
   );
 
   const addActivity = useCallback(
@@ -1849,6 +1952,27 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
     [activeShoppingListId, shoppingListsForDwelling],
   );
 
+  const shoppingListStats = useMemo(() => {
+    const stats = new Map<string, { remaining: number; total: number }>();
+    shoppingListsForDwelling.forEach((list) => {
+      stats.set(list.id, { remaining: 0, total: 0 });
+    });
+
+    db.shopping.forEach((item) => {
+      const current = stats.get(item.shoppingListId);
+      if (!current) {
+        return;
+      }
+
+      current.total += 1;
+      if (!item.checked) {
+        current.remaining += 1;
+      }
+    });
+
+    return stats;
+  }, [db.shopping, shoppingListsForDwelling]);
+
   useEffect(() => {
     if (!activeDwelling) {
       setActiveShoppingListId(null);
@@ -1889,7 +2013,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
   const shoppingByCategory = useMemo(() => {
     const grouped = new Map<string, ShoppingItem[]>();
     unpickedItems.forEach((item) => {
-      const category = activeSetting?.categoryOverrides?.[item.catalogItemId] ?? item.category;
+      const category = item.category;
       const list = grouped.get(category) ?? [];
       list.push(item);
       grouped.set(category, list);
@@ -1906,7 +2030,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
       category,
       items: grouped.get(category) ?? [],
     }));
-  }, [activeSetting?.categoryOverrides, unpickedItems, categoryOrder]);
+  }, [unpickedItems, categoryOrder]);
 
   const presetsForDwelling = useMemo(() => {
     if (!activeDwelling) {
@@ -2158,7 +2282,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
         return;
       }
 
-      const topSuggestion = getSuggestions(parsed.query, db.catalog)[0];
+      const topSuggestion = getSuggestions(parsed.query, activeCatalog)[0];
       if (!topSuggestion) {
         setPendingNewProduct({
           name: parsed.query.trim(),
@@ -2173,7 +2297,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
       addShoppingFromCatalog(topSuggestion, parsed.quantity, undefined, undefined, shoppingListId);
       setShoppingInput("");
     },
-    [addShoppingFromCatalog, db.catalog, pushToast],
+    [activeCatalog, addShoppingFromCatalog, pushToast],
   );
 
   const handleAddShopping = useCallback(() => {
@@ -2447,6 +2571,10 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
       const name = householdName.trim() || "Vårt hushåll";
       const householdId = uid();
       const dwellingId = uid();
+      const seedCatalog =
+        copyActiveCatalogToNewHousehold && activeCatalog.length > 0
+          ? cloneCatalogForHousehold(activeCatalog, householdId)
+          : createSeedCatalogForHousehold(householdId);
 
       mutateDb((draft) => {
         draft.households.push({
@@ -2466,6 +2594,8 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
           accentColor: "#2f6048",
           createdAt: Date.now(),
         });
+
+        draft.catalog.push(...seedCatalog);
       });
 
       const nextSession: SessionState = {
@@ -2478,7 +2608,27 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
       saveSession(nextSession);
       pushToast("Hushållet är klart.");
     },
-    [currentUser, householdName, mutateDb, pushToast, saveSession],
+    [activeCatalog, copyActiveCatalogToNewHousehold, currentUser, householdName, mutateDb, pushToast, saveSession],
+  );
+
+  const switchHousehold = useCallback(
+    (householdId: string) => {
+      if (!householdId) {
+        return;
+      }
+
+      const targetDwelling = db.dwellings.find((dwelling) => dwelling.householdId === householdId) ?? null;
+      const nextSession: SessionState = {
+        currentUserId: currentUser?.id ?? null,
+        activeHouseholdId: householdId,
+        activeDwellingId: targetDwelling?.id ?? null,
+      };
+      setSession(nextSession);
+      saveSession(nextSession);
+      setTab("overview");
+      setActiveShoppingListId(null);
+    },
+    [currentUser?.id, db.dwellings, saveSession],
   );
 
   const joinByToken = useCallback(
@@ -2704,6 +2854,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
     const productId = uid();
     const newProduct: CatalogItem = {
       id: productId,
+      householdId: activeHousehold.id,
       name: productName,
       category: pendingNewProduct.category,
       defaultQuantity: quantity,
@@ -2916,6 +3067,10 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
   );
 
   const addCatalogItemFromSettings = useCallback(() => {
+    if (!activeHousehold) {
+      return;
+    }
+
     const name = newCatalogName.trim();
     const quantity = Number(newCatalogQuantity.replace(",", "."));
 
@@ -2932,6 +3087,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
     mutateDb((draft) => {
       draft.catalog.push({
         id: uid(),
+        householdId: activeHousehold.id,
         name,
         category: newCatalogCategory,
         defaultQuantity: quantity,
@@ -2946,12 +3102,16 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
     setNewCatalogQuantity("1");
     setNewCatalogUnit("st");
     pushToast("Vara upplagd.");
-  }, [mutateDb, newCatalogCategory, newCatalogName, newCatalogQuantity, newCatalogUnit, pushToast]);
+  }, [activeHousehold, mutateDb, newCatalogCategory, newCatalogName, newCatalogQuantity, newCatalogUnit, pushToast]);
 
   const updateCatalogItem = useCallback(
     (catalogItemId: string, updates: Partial<CatalogItem>) => {
+      if (!activeHousehold) {
+        return;
+      }
+
       mutateDb((draft) => {
-        const item = draft.catalog.find((entry) => entry.id === catalogItemId);
+        const item = draft.catalog.find((entry) => entry.id === catalogItemId && entry.householdId === activeHousehold.id);
         if (!item) {
           return;
         }
@@ -2981,8 +3141,11 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
         }
 
         if (shouldSyncLearning) {
+          const dwellingIds = new Set(
+            draft.dwellings.filter((dwelling) => dwelling.householdId === activeHousehold.id).map((dwelling) => dwelling.id),
+          );
           draft.learning.forEach((learning) => {
-            if (learning.catalogItemId !== catalogItemId) {
+            if (learning.catalogItemId !== catalogItemId || !dwellingIds.has(learning.dwellingId)) {
               return;
             }
             learning.quantity = nextLearningQuantity;
@@ -2992,12 +3155,12 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
         }
       });
     },
-    [mutateDb],
+    [activeHousehold, mutateDb],
   );
 
   const saveCatalogDefaults = useCallback(
     (catalogItemId: string) => {
-      const catalogItem = db.catalog.find((entry) => entry.id === catalogItemId);
+      const catalogItem = activeCatalog.find((entry) => entry.id === catalogItemId);
       if (!catalogItem) {
         return;
       }
@@ -3013,7 +3176,9 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
       const unit = draft?.unit ?? catalogItem.defaultUnit;
 
       mutateDb((draftDb) => {
-        const target = draftDb.catalog.find((entry) => entry.id === catalogItemId);
+        const target = draftDb.catalog.find(
+          (entry) => entry.id === catalogItemId && entry.householdId === catalogItem.householdId,
+        );
         if (!target) {
           return;
         }
@@ -3051,22 +3216,41 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
       }));
       pushToast(`Sparade standard för ${catalogItem.name}.`);
     },
-    [activeDwelling, catalogDefaultDrafts, db.catalog, mutateDb, pushToast],
+    [activeCatalog, activeDwelling, catalogDefaultDrafts, mutateDb, pushToast],
   );
 
   const removeCatalogItem = useCallback(
     (catalogItemId: string) => {
+      if (!activeHousehold) {
+        return;
+      }
+
       mutateDb((draft) => {
-        draft.catalog = draft.catalog.filter((item) => item.id !== catalogItemId);
-        draft.shopping = draft.shopping.filter((item) => item.catalogItemId !== catalogItemId);
-        draft.learning = draft.learning.filter((item) => item.catalogItemId !== catalogItemId);
+        const dwellingIds = new Set(
+          draft.dwellings.filter((dwelling) => dwelling.householdId === activeHousehold.id).map((dwelling) => dwelling.id),
+        );
+        draft.catalog = draft.catalog.filter(
+          (item) => !(item.householdId === activeHousehold.id && item.id === catalogItemId),
+        );
+        draft.shopping = draft.shopping.filter(
+          (item) => !(item.householdId === activeHousehold.id && item.catalogItemId === catalogItemId),
+        );
+        draft.learning = draft.learning.filter(
+          (item) => !(dwellingIds.has(item.dwellingId) && item.catalogItemId === catalogItemId),
+        );
         draft.presets = draft.presets.map((preset) => ({
           ...preset,
-          items: preset.items.filter((item) => item.catalogItemId !== catalogItemId),
+          items:
+            preset.householdId === activeHousehold.id
+              ? preset.items.filter((item) => item.catalogItemId !== catalogItemId)
+              : preset.items,
         }));
         draft.recipes = draft.recipes.map((recipe) => ({
           ...recipe,
-          ingredients: recipe.ingredients.filter((ingredient) => ingredient.catalogItemId !== catalogItemId),
+          ingredients:
+            recipe.householdId === activeHousehold.id
+              ? recipe.ingredients.filter((ingredient) => ingredient.catalogItemId !== catalogItemId)
+              : recipe.ingredients,
         }));
         draft.settings.forEach((setting) => {
           if (!setting.categoryOverrides) {
@@ -3078,34 +3262,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
 
       pushToast("Vara borttagen.");
     },
-    [mutateDb, pushToast],
-  );
-
-  const updateCategoryOverride = useCallback(
-    (catalogItemId: string, category: string) => {
-      if (!currentUser) {
-        return;
-      }
-
-      mutateDb((draft) => {
-        let setting = draft.settings.find((item) => item.userId === currentUser.id);
-        if (!setting) {
-          setting = {
-            id: uid(),
-            userId: currentUser.id,
-            dailySummaryEnabled: true,
-            categoryOverrides: {},
-          };
-          draft.settings.push(setting);
-        }
-
-        if (!setting.categoryOverrides) {
-          setting.categoryOverrides = {};
-        }
-        setting.categoryOverrides[catalogItemId] = category;
-      });
-    },
-    [currentUser, mutateDb],
+    [activeHousehold, mutateDb, pushToast],
   );
 
   const addRecipeIngredientFromCatalog = useCallback(
@@ -3151,7 +3308,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
       pushToast("Skriv ett ingrediensnamn.");
       return;
     }
-    const topSuggestion = getSuggestions(parsed.query, db.catalog)[0];
+    const topSuggestion = getSuggestions(parsed.query, activeCatalog)[0];
 
     if (!topSuggestion) {
       setPendingRecipeIngredient({
@@ -3164,10 +3321,10 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
     }
 
     addRecipeIngredientFromCatalog(topSuggestion, parsed.quantity);
-  }, [addRecipeIngredientFromCatalog, db.catalog, pushToast, recipeIngredientInput]);
+  }, [activeCatalog, addRecipeIngredientFromCatalog, pushToast, recipeIngredientInput]);
 
   const confirmCreateRecipeIngredient = useCallback(() => {
-    if (!pendingRecipeIngredient) {
+    if (!pendingRecipeIngredient || !activeHousehold) {
       return;
     }
 
@@ -3180,6 +3337,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
     const quantity = Math.max(0.01, pendingRecipeIngredient.quantity);
     const newCatalogItem: CatalogItem = {
       id: uid(),
+      householdId: activeHousehold.id,
       name: ingredientName,
       category: pendingRecipeIngredient.category,
       defaultQuantity: quantity,
@@ -3207,7 +3365,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
     setPendingRecipeIngredient(null);
     setRecipeIngredientInput("");
     pushToast(`Lade till ingrediensen ${newCatalogItem.name}.`);
-  }, [mutateDb, pendingRecipeIngredient, pushToast]);
+  }, [activeHousehold, mutateDb, pendingRecipeIngredient, pushToast]);
 
   const removeRecipeDraftIngredient = useCallback((catalogItemId: string) => {
     setRecipeDraftIngredients((prev) => prev.filter((item) => item.catalogItemId !== catalogItemId));
@@ -3351,7 +3509,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
           return;
         }
 
-        const catalogItem = db.catalog.find((item) => item.id === ingredient.catalogItemId);
+        const catalogItem = activeCatalogMap.get(ingredient.catalogItemId);
         if (!catalogItem) {
           return;
         }
@@ -3364,8 +3522,8 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
     },
     [
       activeShoppingListId,
+      activeCatalogMap,
       addShoppingFromCatalog,
-      db.catalog,
       pushToast,
       selectedRecipeIngredients,
       shoppingListsForDwelling,
@@ -3429,6 +3587,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
     setTodoMonthlyMode("date");
     setTodoCustomInterval(3);
     setTodoCustomUnit("day");
+    setShowTodoComposer(false);
 
     pushToast("Uppgiften är sparad.");
   }, [
@@ -3446,6 +3605,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
     todoNote,
     todoRecurrenceType,
     todoTitle,
+    setShowTodoComposer,
   ]);
 
   const completeTodo = useCallback(
@@ -3716,6 +3876,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
       );
 
       draft.households = draft.households.filter((household) => household.id !== activeHousehold.id);
+      draft.catalog = draft.catalog.filter((item) => item.householdId !== activeHousehold.id);
       draft.dwellings = draft.dwellings.filter((dwelling) => !dwellingIds.has(dwelling.id));
       draft.shoppingLists = draft.shoppingLists.filter(
         (list) => list.householdId !== activeHousehold.id && !dwellingIds.has(list.dwellingId),
@@ -3821,8 +3982,8 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
       return [];
     }
 
-    return getSuggestions(parsed.query, db.catalog);
-  }, [db.catalog, shoppingInput]);
+    return getSuggestions(parsed.query, activeCatalog);
+  }, [activeCatalog, shoppingInput]);
 
   const recipeIngredientSuggestions = useMemo(() => {
     const parsed = parseShoppingInput(recipeIngredientInput);
@@ -3830,19 +3991,19 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
       return [];
     }
 
-    return getSuggestions(parsed.query, db.catalog);
-  }, [db.catalog, recipeIngredientInput]);
+    return getSuggestions(parsed.query, activeCatalog);
+  }, [activeCatalog, recipeIngredientInput]);
 
   const sortedCatalog = useMemo(
     () =>
-      [...db.catalog]
+      [...activeCatalog]
         .filter((item) =>
           !catalogSearch.trim()
             ? true
             : normalizeText(item.name).includes(normalizeText(catalogSearch)),
         )
         .sort((a, b) => a.name.localeCompare(b.name, "sv-SE")),
-    [catalogSearch, db.catalog],
+    [activeCatalog, catalogSearch],
   );
 
   const visibleRecipes = useMemo(() => {
@@ -4048,43 +4209,45 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
 
   return (
     <main className="app-shell">
-      <header className="hero-shell">
-        <div className="hero-brand">
-          <div className="brand-mark">
-            <Image src="/icons/logotype.png" alt="Domus logotyp" width={132} height={132} className="brand-logo" priority />
-          </div>
-          <div className="hero-copy">
-            <p className="eyebrow">{cloudLive ? "Live sync aktiv" : "Lokal testkopia"}</p>
-            <h1>{activeHousehold?.name ?? "Domus"}</h1>
-            <p className="hero-text">
-              Inköp, recept och to-do för {activeDwelling?.name ?? "ditt hem"} i en tydlig arbetsyta.
-            </p>
-            <div className="hero-meta">
-              <span className="stat-pill">{householdMembers.length} medlemmar</span>
-              <span className="stat-pill">{overviewDwellings.length} boenden</span>
-              <span className="stat-pill">
-                {unpickedItems.length} att handla
-              </span>
+      {tab === "overview" ? (
+        <header className="hero-shell">
+          <div className="hero-brand">
+            <div className="brand-mark">
+              <Image src="/icons/logotype.png" alt="Domus logotyp" width={132} height={132} className="brand-logo" priority />
+            </div>
+            <div className="hero-copy">
+              <p className="eyebrow">{cloudLive ? "Live sync aktiv" : "Lokal testkopia"}</p>
+              <h1>{activeHousehold?.name ?? "Domus"}</h1>
+              <p className="hero-text">
+                Inköp, recept och to-do för {activeDwelling?.name ?? "ditt hem"} i en tydlig arbetsyta.
+              </p>
+              <div className="hero-meta">
+                <span className="stat-pill">{householdMembers.length} medlemmar</span>
+                <span className="stat-pill">{overviewDwellings.length} boenden</span>
+                <span className="stat-pill">
+                  {unpickedItems.length} att handla
+                </span>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="hero-toolbar">
-          <label className="control-card dwelling-switcher">
-            <span>Boende</span>
-            <select
-              value={activeDwelling?.id ?? ""}
-              onChange={(event) => switchDwelling(event.target.value)}
-            >
-              {activeDwellings.map((dwelling) => (
-                <option key={dwelling.id} value={dwelling.id}>
-                  {dwelling.icon} {dwelling.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      </header>
+          <div className="hero-toolbar">
+            <label className="control-card dwelling-switcher">
+              <span>Boende</span>
+              <select
+                value={activeDwelling?.id ?? ""}
+                onChange={(event) => switchDwelling(event.target.value)}
+              >
+                {activeDwellings.map((dwelling) => (
+                  <option key={dwelling.id} value={dwelling.id}>
+                    {dwelling.icon} {dwelling.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </header>
+      ) : null}
 
       <div className="account-menu-wrap account-menu-floating" ref={accountMenuRef}>
         <button
@@ -4128,18 +4291,42 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
       </div>
 
       <section className="command-strip">
-        <nav className="tab-row">
+        <nav className="tab-row tab-row-desktop" aria-label="Primär navigation">
           {TAB_ITEMS.map((item) => (
             <button
               key={item.id}
               className={tab === item.id ? "active" : ""}
-              onClick={() => setTab(item.id)}
+              onClick={() => handleTabChange(item.id)}
             >
               {item.label}
             </button>
           ))}
         </nav>
-        <div className="quick-summary">
+        <nav className="tab-row tab-row-mobile" aria-label="Mobilnavigation">
+          {MOBILE_TAB_ITEMS.map((item) => (
+            <button
+              key={item.id}
+              className={`mobile-tab-button ${tab === item.id ? "active" : ""}`}
+              onClick={() => handleTabChange(item.id)}
+              aria-label={item.label}
+              title={item.label}
+            >
+              <span className="tab-icon" aria-hidden="true">
+                <TabIcon id={item.id} />
+              </span>
+            </button>
+          ))}
+          <button
+            type="button"
+            className={`mobile-tab-button mobile-account-button ${tab === "settings" ? "active" : ""}`}
+            onClick={() => handleTabChange("settings")}
+            aria-label="Konto och inställningar"
+            title="Konto och inställningar"
+          >
+            {accountInitials}
+          </button>
+        </nav>
+        <div className="quick-summary" hidden={tab !== "overview"}>
           <span className="stat-pill">{activeDwelling?.icon} {activeDwelling?.name ?? "Inget boende"}</span>
           <span className="stat-pill">{cloudLive ? "Cloud live" : "Lokal fallback"}</span>
         </div>
@@ -4232,197 +4419,214 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
 
       {tab === "shopping" ? (
         <section className="content-grid">
-          <article className="panel full">
-            <h2>Inköp i {activeDwelling?.name}</h2>
-            <p className="small">Skriv en vara, tryck Enter så läggs översta förslaget till direkt.</p>
-            <div className="shopping-meta">
-              <label>
-                Välj inköpslista
-                <select
-                  value={activeShoppingListId ?? ""}
-                  onChange={(event) => setActiveShoppingListId(event.target.value || null)}
-                >
-                  <option value="">Ingen vald</option>
-                  {shoppingListsForDwelling.map((list) => (
-                    <option key={list.id} value={list.id}>
-                      {list.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button className="ghost" onClick={() => setPendingNewList({ name: "Inköpslista" })}>
-                Ny lista
-              </button>
-              <button
-                className="ghost danger"
-                onClick={deleteActiveShoppingList}
-                disabled={!activeShoppingList}
-                title={activeShoppingList ? `Radera ${activeShoppingList.name}` : "Välj en lista först"}
-              >
-                Radera lista
-              </button>
-            </div>
-            <div className="shopping-add">
-              <input
-                value={shoppingInput}
-                onChange={(event) => setShoppingInput(event.target.value)}
-                placeholder="Ex: banan 10"
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    handleAddShopping();
-                  }
-                }}
-              />
-              <button onClick={handleAddShopping}>Lägg till</button>
-            </div>
-            {shoppingInput.trim() && shoppingSuggestions.length ? (
-              <ul className="suggestions">
-                {shoppingSuggestions.map((item, index) => (
-                  <li key={item.id}>
-                    <button
-                      onClick={() => {
-                        const parsed = parseShoppingInput(shoppingInput);
-                        if (!activeShoppingListId) {
-                          setPendingNewList({
-                            name: "Inköpslista",
-                            pendingInput: `${item.name}${parsed.quantity ? ` ${parsed.quantity}` : ""}`,
-                          });
-                          return;
-                        }
-                        addShoppingFromCatalog(item, parsed.quantity, undefined, undefined, activeShoppingListId);
-                        setShoppingInput("");
-                      }}
-                    >
-                      <strong>{index === 0 ? "Enter → " : ""}{item.name}</strong>
-                      <span>{item.defaultQuantity} {item.defaultUnit}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-            <div className="row-actions">
-              <button className="ghost danger" onClick={clearShoppingList}>
-                Rensa hela inköpslistan
-              </button>
-              <button className="ghost" onClick={openCategoryOrganizer}>
-                Ordna kategorier
-              </button>
-              <button className="ghost" onClick={() => setTab("catalog")}>
-                Varubibliotek
-              </button>
-            </div>
-            {!activeShoppingListId ? <p className="small">Välj eller skapa en inköpslista för att lägga till varor.</p> : null}
-          </article>
-
-          <article className="panel full">
-            <h2>Att handla</h2>
-            {!shoppingByCategory.length ? <p>Listan är tom just nu.</p> : null}
-            {shoppingByCategory.map((group, index) => (
-              <div key={`${group.category}-${index}`} className="category-group">
-                <h3>{group.category}</h3>
-                <ul className="list">
-                  {group.items.map((item) => (
-                    <li key={item.id} className="shopping-row">
-                      <button className="check" onClick={() => toggleShoppingChecked(item.id)} aria-label="Markera plockad">
-                        ◯
-                      </button>
-                      <span className="item-name">{item.name}</span>
-
-                      <div className="quantity-controls">
-                        <button
-                          className="step-btn"
-                          onClick={() => adjustShoppingQuantity(item.id, -1)}
-                          aria-label={`Minska ${item.name}`}
-                        >
-                          -
-                        </button>
-                        {editingItemId === item.id ? (
-                          <span
-                            className="inline-edit"
-                            tabIndex={-1}
-                            onBlur={(event) => {
-                              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                                saveInlineEdit();
-                              }
-                            }}
-                          >
-                            <input
-                              autoFocus
-                              value={editQuantity}
-                              onChange={(event) => setEditQuantity(event.target.value)}
-                              inputMode="decimal"
-                            />
-                            <select value={editUnit} onChange={(event) => setEditUnit(event.target.value as Unit)}>
-                              {(db.catalog.find((entry) => entry.id === item.catalogItemId)?.units ?? [item.unit]).map((unit) => (
-                                <option key={unit} value={unit}>
-                                  {unit}
-                                </option>
-                              ))}
-                            </select>
-                          </span>
-                        ) : (
-                          <button
-                            className="quantity"
-                            onClick={() => {
-                              setEditingItemId(item.id);
-                              setEditQuantity(String(item.quantity));
-                              setEditUnit(item.unit);
-                            }}
-                          >
-                            {item.quantity} {item.unit}
-                          </button>
-                        )}
-                        <button
-                          className="step-btn"
-                          onClick={() => adjustShoppingQuantity(item.id, 1)}
-                          aria-label={`Öka ${item.name}`}
-                        >
-                          +
-                        </button>
-                      </div>
-
-                      <button className="danger ghost" onClick={() => removeShoppingItem(item)}>
-                        Ta bort
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-            {activeShoppingList && pickedItems.length > 0 && unpickedItems.length === 0 ? (
-              <div className="completion-actions">
-                <p>Listan är klar. Vill du arkivera eller radera listan?</p>
-                <div className="row-actions">
-                  <button className="ghost" onClick={archiveActiveShoppingList}>
-                    Arkivera lista
-                  </button>
-                  <button className="ghost danger" onClick={deleteActiveShoppingList}>
-                    Radera lista
-                  </button>
+          {!activeShoppingList ? (
+            <article className="panel full">
+              <div className="section-head">
+                <div>
+                  <h2>Inköpslistor</h2>
+                  <p className="small">Öppna en befintlig lista eller skapa en ny.</p>
                 </div>
+                <button className="ghost" onClick={() => setPendingNewList({ name: "Inköpslista" })}>
+                  Ny lista
+                </button>
               </div>
-            ) : null}
-          </article>
-
-          <article className="panel full">
-            <button className="collapse" onClick={() => setPickedOpen((prev) => !prev)}>
-              {pickedOpen ? "Dölj" : "Visa"} plockat ({pickedItems.length})
-            </button>
-            {pickedOpen ? (
-              <ul className="list">
-                {pickedItems.map((item) => (
-                  <li key={item.id} className="shopping-row">
-                    <button className="check done" onClick={() => toggleShoppingChecked(item.id)} aria-label="Återställ vara">
-                      ✓
+              {!shoppingListsForDwelling.length ? <p>Inga inköpslistor än. Skapa din första lista.</p> : null}
+              <div className="shopping-list-browser">
+                {shoppingListsForDwelling.map((list) => {
+                  const stats = shoppingListStats.get(list.id);
+                  return (
+                    <button
+                      key={list.id}
+                      type="button"
+                      className="shopping-list-row"
+                      onClick={() => setActiveShoppingListId(list.id)}
+                    >
+                      <div>
+                        <strong>{list.name}</strong>
+                        <p className="small">Skapad {formatDateTime(list.createdAt)}</p>
+                      </div>
+                      <div className="shopping-list-row-meta">
+                        <span className="stat-pill">{stats?.remaining ?? 0} kvar</span>
+                        <span className="small">{stats?.total ?? 0} totalt</span>
+                      </div>
                     </button>
-                    <span className="item-name done">{item.name}</span>
-                    <span className="quantity">{item.quantity} {item.unit}</span>
-                  </li>
+                  );
+                })}
+              </div>
+            </article>
+          ) : (
+            <>
+              <article className="panel full">
+                <div className="section-head">
+                  <div>
+                    <button className="ghost subtle shopping-back-button" onClick={() => setActiveShoppingListId(null)}>
+                      Alla listor
+                    </button>
+                    <h2>{activeShoppingList.name}</h2>
+                    <p className="small">Skriv en vara och tryck Enter så läggs översta förslaget till direkt.</p>
+                  </div>
+                  <div className="row-actions">
+                    <button className="ghost" onClick={() => setPendingNewList({ name: "Inköpslista" })}>
+                      Ny lista
+                    </button>
+                    <button className="ghost danger" onClick={clearShoppingList}>
+                      Rensa lista
+                    </button>
+                    <button className="ghost" onClick={openCategoryOrganizer}>
+                      Ordna kategorier
+                    </button>
+                    <button className="ghost" onClick={() => setTab("catalog")}>
+                      Varubibliotek
+                    </button>
+                    <button className="ghost danger" onClick={deleteActiveShoppingList}>
+                      Radera lista
+                    </button>
+                  </div>
+                </div>
+                <div className="shopping-add">
+                  <input
+                    value={shoppingInput}
+                    onChange={(event) => setShoppingInput(event.target.value)}
+                    placeholder="Ex: banan 10"
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        handleAddShopping();
+                      }
+                    }}
+                  />
+                  <button onClick={handleAddShopping}>Lägg till</button>
+                </div>
+                {shoppingInput.trim() && shoppingSuggestions.length ? (
+                  <ul className="suggestions">
+                    {shoppingSuggestions.map((item, index) => (
+                      <li key={item.id}>
+                        <button
+                          onClick={() => {
+                            const parsed = parseShoppingInput(shoppingInput);
+                            addShoppingFromCatalog(item, parsed.quantity, undefined, undefined, activeShoppingList.id);
+                            setShoppingInput("");
+                          }}
+                        >
+                          <strong>{index === 0 ? "Enter → " : ""}{item.name}</strong>
+                          <span>{item.defaultQuantity} {item.defaultUnit}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </article>
+
+              <article className="panel full">
+                <h2>Att handla</h2>
+                {!shoppingByCategory.length ? <p>Listan är tom just nu.</p> : null}
+                {shoppingByCategory.map((group, index) => (
+                  <div key={`${group.category}-${index}`} className="category-group">
+                    <h3>{group.category}</h3>
+                    <ul className="list">
+                      {group.items.map((item) => (
+                        <li key={item.id} className="shopping-row">
+                          <button className="check" onClick={() => toggleShoppingChecked(item.id)} aria-label="Markera plockad">
+                            ◯
+                          </button>
+                          <span className="item-name">{item.name}</span>
+
+                          <div className="quantity-controls">
+                            <button
+                              className="step-btn"
+                              onClick={() => adjustShoppingQuantity(item.id, -1)}
+                              aria-label={`Minska ${item.name}`}
+                            >
+                              -
+                            </button>
+                            {editingItemId === item.id ? (
+                              <span
+                                className="inline-edit"
+                                tabIndex={-1}
+                                onBlur={(event) => {
+                                  if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                                    saveInlineEdit();
+                                  }
+                                }}
+                              >
+                                <input
+                                  autoFocus
+                                  value={editQuantity}
+                                  onChange={(event) => setEditQuantity(event.target.value)}
+                                  inputMode="decimal"
+                                />
+                                <select value={editUnit} onChange={(event) => setEditUnit(event.target.value as Unit)}>
+                                  {(activeCatalogMap.get(item.catalogItemId)?.units ?? [item.unit]).map((unit) => (
+                                    <option key={unit} value={unit}>
+                                      {unit}
+                                    </option>
+                                  ))}
+                                </select>
+                              </span>
+                            ) : (
+                              <button
+                                className="quantity"
+                                onClick={() => {
+                                  setEditingItemId(item.id);
+                                  setEditQuantity(String(item.quantity));
+                                  setEditUnit(item.unit);
+                                }}
+                              >
+                                {item.quantity} {item.unit}
+                              </button>
+                            )}
+                            <button
+                              className="step-btn"
+                              onClick={() => adjustShoppingQuantity(item.id, 1)}
+                              aria-label={`Öka ${item.name}`}
+                            >
+                              +
+                            </button>
+                          </div>
+
+                          <button className="danger ghost" onClick={() => removeShoppingItem(item)}>
+                            Ta bort
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 ))}
-              </ul>
-            ) : null}
-          </article>
+                {pickedItems.length > 0 && unpickedItems.length === 0 ? (
+                  <div className="completion-actions">
+                    <p>Listan är klar. Vill du arkivera eller radera listan?</p>
+                    <div className="row-actions">
+                      <button className="ghost" onClick={archiveActiveShoppingList}>
+                        Arkivera lista
+                      </button>
+                      <button className="ghost danger" onClick={deleteActiveShoppingList}>
+                        Radera lista
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+              </article>
+
+              <article className="panel full">
+                <button className="collapse" onClick={() => setPickedOpen((prev) => !prev)}>
+                  {pickedOpen ? "Dölj" : "Visa"} plockat ({pickedItems.length})
+                </button>
+                {pickedOpen ? (
+                  <ul className="list">
+                    {pickedItems.map((item) => (
+                      <li key={item.id} className="shopping-row">
+                        <button className="check done" onClick={() => toggleShoppingChecked(item.id)} aria-label="Återställ vara">
+                          ✓
+                        </button>
+                        <span className="item-name done">{item.name}</span>
+                        <span className="quantity">{item.quantity} {item.unit}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </article>
+            </>
+          )}
         </section>
       ) : null}
 
@@ -4624,98 +4828,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
       ) : null}
 
       {tab === "todo" ? (
-        <section className="content-grid">
-          <article className="panel full">
-            <h2>To-do</h2>
-            <div className="todo-form">
-              <label>
-                Titel
-                <input value={todoTitle} onChange={(event) => setTodoTitle(event.target.value)} placeholder="Ex: Byt filter i tvättmaskin" />
-              </label>
-
-              <label>
-                Anteckning
-                <input value={todoNote} onChange={(event) => setTodoNote(event.target.value)} placeholder="Valfritt" />
-              </label>
-
-              <label>
-                Förfallodatum
-                <input type="date" value={todoDueDate} onChange={(event) => setTodoDueDate(event.target.value)} />
-              </label>
-
-              <label>
-                Ansvarig
-                <select value={todoAssignee} onChange={(event) => setTodoAssignee(event.target.value as Todo["assignee"])}>
-                  <option value="none">Ingen</option>
-                  <option value="all">Alla</option>
-                  {householdMembers.map((member) => (
-                    <option key={member.id} value={member.id}>
-                      {member.firstName}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label>
-                Boende
-                <select value={todoDwellingId} onChange={(event) => setTodoDwellingId(event.target.value)}>
-                  <option value="">Global i hushållet</option>
-                  {activeDwellings.map((dwelling) => (
-                    <option key={dwelling.id} value={dwelling.id}>
-                      {dwelling.icon} {dwelling.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label>
-                Återkommande
-                <select
-                  value={todoRecurrenceType}
-                  onChange={(event) => setTodoRecurrenceType(event.target.value as typeof todoRecurrenceType)}
-                >
-                  <option value="once">Engång</option>
-                  <option value="weekly">Varje vecka</option>
-                  <option value="biweekly">Varannan vecka</option>
-                  <option value="monthly">Varje månad</option>
-                  <option value="yearly">Varje år</option>
-                  <option value="custom">Anpassad</option>
-                </select>
-              </label>
-
-              {todoRecurrenceType === "monthly" ? (
-                <label>
-                  Månadsregel
-                  <select value={todoMonthlyMode} onChange={(event) => setTodoMonthlyMode(event.target.value as "date" | "last") }>
-                    <option value="date">Samma datum varje månad</option>
-                    <option value="last">Sista dagen varje månad</option>
-                  </select>
-                </label>
-              ) : null}
-
-              {todoRecurrenceType === "custom" ? (
-                <label>
-                  Anpassad frekvens
-                  <div className="inline-grid">
-                    <input
-                      type="number"
-                      min={1}
-                      value={todoCustomInterval}
-                      onChange={(event) => setTodoCustomInterval(Number(event.target.value))}
-                    />
-                    <select value={todoCustomUnit} onChange={(event) => setTodoCustomUnit(event.target.value as "day" | "week" | "month") }>
-                      <option value="day">dag</option>
-                      <option value="week">vecka</option>
-                      <option value="month">månad</option>
-                    </select>
-                  </div>
-                </label>
-              ) : null}
-
-              <button onClick={createTodo}>Skapa uppgift</button>
-            </div>
-          </article>
-
+        <section className="content-grid todo-page">
           <article className="panel">
             <h2>Aktiva uppgifter</h2>
             {!activeTodos.length ? <p>Inga aktiva uppgifter.</p> : null}
@@ -4759,6 +4872,15 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
               ))}
             </ul>
           </article>
+
+          <button
+            type="button"
+            className="floating-add-button"
+            onClick={() => setShowTodoComposer(true)}
+            aria-label="Lägg till ny to-do"
+          >
+            +
+          </button>
         </section>
       ) : null}
 
@@ -4766,7 +4888,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
         <section className="content-grid">
           <article className="panel full">
             <h2>Varubibliotek</h2>
-            <p className="small">Biblioteket är gemensamt för alla hushåll du är med i.</p>
+            <p className="small">Biblioteket delas av alla medlemmar i {activeHousehold?.name ?? "det aktiva hushållet"}.</p>
             <div className="shopping-add">
               <input
                 value={catalogSearch}
@@ -4820,9 +4942,8 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
 
             <ul className="list compact">
               {sortedCatalog.map((item) => {
-                const personalCategory = activeSetting?.categoryOverrides?.[item.id] ?? item.category;
                 return (
-                  <li key={item.id} className="catalog-row">
+                  <li key={`${item.householdId}:${item.id}`} className="catalog-row">
                     <input
                       value={item.name}
                       onChange={(event) => updateCatalogItem(item.id, { name: event.target.value })}
@@ -4862,9 +4983,9 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
                       ))}
                     </select>
                     <select
-                      value={personalCategory}
-                      onChange={(event) => updateCategoryOverride(item.id, event.target.value)}
-                      aria-label={`Min kategori för ${item.name}`}
+                      value={item.category}
+                      onChange={(event) => updateCatalogItem(item.id, { category: event.target.value })}
+                      aria-label={`Kategori för ${item.name}`}
                     >
                       {DEFAULT_CATEGORIES.map((category) => (
                         <option key={category} value={category}>
@@ -4901,6 +5022,42 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
 
           <article className="panel">
             <h2>Hushåll</h2>
+            {myHouseholds.length > 1 ? (
+              <label>
+                Aktivt hushåll
+                <select
+                  value={activeHousehold?.id ?? ""}
+                  onChange={(event) => switchHousehold(event.target.value)}
+                >
+                  {myHouseholds.map((household) => (
+                    <option key={household.id} value={household.id}>
+                      {household.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            <form onSubmit={createHousehold} className="todo-form">
+              <label>
+                Nytt hushåll
+                <input
+                  value={householdName}
+                  onChange={(event) => setHouseholdName(event.target.value)}
+                  placeholder="Ex: Fjällstugan"
+                  required
+                />
+              </label>
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={copyActiveCatalogToNewHousehold}
+                  onChange={(event) => setCopyActiveCatalogToNewHousehold(event.target.checked)}
+                  disabled={!activeCatalog.length}
+                />
+                <span>Kopiera aktuellt varubibliotek till nya hushållet</span>
+              </label>
+              <button type="submit">Skapa nytt hushåll</button>
+            </form>
             <button onClick={createInvite}>Skapa inbjudningslänk (7 dagar)</button>
             <ul className="list compact">
               {activeHousehold?.invites.slice(0, 6).map((invite) => (
@@ -5038,7 +5195,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
 
           <article className="panel">
             <h2>Varubibliotek</h2>
-            <p className="small">Öppna varubiblioteket för att redigera upplagda varor. Biblioteket delas i alla hushåll du är med i.</p>
+            <p className="small">Öppna varubiblioteket för att redigera hushållets gemensamma varor.</p>
             <button onClick={() => setTab("catalog")}>Öppna varubibliotek</button>
           </article>
 
@@ -5119,6 +5276,105 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
               >
                 Skapa lista
               </button>
+            </div>
+          </article>
+        </div>
+      ) : null}
+
+      {showTodoComposer ? (
+        <div className="modal-backdrop">
+          <article className="modal-card">
+            <h2>Ny to-do</h2>
+            <div className="todo-form">
+              <label>
+                Titel
+                <input value={todoTitle} onChange={(event) => setTodoTitle(event.target.value)} placeholder="Ex: Byt filter i tvättmaskin" />
+              </label>
+
+              <label>
+                Anteckning
+                <input value={todoNote} onChange={(event) => setTodoNote(event.target.value)} placeholder="Valfritt" />
+              </label>
+
+              <label>
+                Förfallodatum
+                <input type="date" value={todoDueDate} onChange={(event) => setTodoDueDate(event.target.value)} />
+              </label>
+
+              <label>
+                Ansvarig
+                <select value={todoAssignee} onChange={(event) => setTodoAssignee(event.target.value as Todo["assignee"])}>
+                  <option value="none">Ingen</option>
+                  <option value="all">Alla</option>
+                  {householdMembers.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.firstName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Boende
+                <select value={todoDwellingId} onChange={(event) => setTodoDwellingId(event.target.value)}>
+                  <option value="">Global i hushållet</option>
+                  {activeDwellings.map((dwelling) => (
+                    <option key={dwelling.id} value={dwelling.id}>
+                      {dwelling.icon} {dwelling.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Återkommande
+                <select
+                  value={todoRecurrenceType}
+                  onChange={(event) => setTodoRecurrenceType(event.target.value as typeof todoRecurrenceType)}
+                >
+                  <option value="once">Engång</option>
+                  <option value="weekly">Varje vecka</option>
+                  <option value="biweekly">Varannan vecka</option>
+                  <option value="monthly">Varje månad</option>
+                  <option value="yearly">Varje år</option>
+                  <option value="custom">Anpassad</option>
+                </select>
+              </label>
+
+              {todoRecurrenceType === "monthly" ? (
+                <label>
+                  Månadsregel
+                  <select value={todoMonthlyMode} onChange={(event) => setTodoMonthlyMode(event.target.value as "date" | "last") }>
+                    <option value="date">Samma datum varje månad</option>
+                    <option value="last">Sista dagen varje månad</option>
+                  </select>
+                </label>
+              ) : null}
+
+              {todoRecurrenceType === "custom" ? (
+                <label>
+                  Anpassad frekvens
+                  <div className="inline-grid">
+                    <input
+                      type="number"
+                      min={1}
+                      value={todoCustomInterval}
+                      onChange={(event) => setTodoCustomInterval(Number(event.target.value))}
+                    />
+                    <select value={todoCustomUnit} onChange={(event) => setTodoCustomUnit(event.target.value as "day" | "week" | "month") }>
+                      <option value="day">dag</option>
+                      <option value="week">vecka</option>
+                      <option value="month">månad</option>
+                    </select>
+                  </div>
+                </label>
+              ) : null}
+            </div>
+            <div className="row-actions">
+              <button className="ghost" onClick={() => setShowTodoComposer(false)}>
+                Avbryt
+              </button>
+              <button onClick={createTodo}>Skapa uppgift</button>
             </div>
           </article>
         </div>
