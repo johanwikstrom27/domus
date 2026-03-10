@@ -1657,6 +1657,28 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
     return name || "Användare";
   }, [currentUser?.firstName, currentUser?.lastName]);
 
+  const latestShoppingListId = useMemo(() => {
+    const dwellingId = activeDwelling?.id;
+    if (!activeHousehold || !dwellingId) {
+      return null;
+    }
+
+    return (
+      db.shoppingLists
+        .filter((item) => item.householdId === activeHousehold.id && item.dwellingId === dwellingId)
+        .sort((a, b) => b.createdAt - a.createdAt)[0]?.id ?? null
+    );
+  }, [activeHousehold, activeDwelling?.id, db.shoppingLists]);
+
+  const openTodo = useCallback(() => {
+    setTab("todo");
+  }, []);
+
+  const openLatestShoppingList = useCallback(() => {
+    setTab("shopping");
+    setActiveShoppingListId(latestShoppingListId);
+  }, [latestShoppingListId]);
+
   useEffect(() => {
     if (!showAccountMenu) {
       return;
@@ -4047,7 +4069,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
           </div>
         </div>
 
-        <div className="hero-actions">
+        <div className="hero-toolbar">
           <label className="control-card dwelling-switcher">
             <span>Boende</span>
             <select
@@ -4061,42 +4083,49 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
               ))}
             </select>
           </label>
-
-          <div className="account-menu-wrap" ref={accountMenuRef}>
-            <button
-              type="button"
-              className="account-avatar-button"
-              onClick={() => setShowAccountMenu((prev) => !prev)}
-              aria-haspopup="menu"
-              aria-expanded={showAccountMenu}
-              aria-controls="account-menu"
-            >
-              {accountInitials}
-            </button>
-            {showAccountMenu ? (
-              <div id="account-menu" className="account-dropdown" role="menu">
-                <div className="account-dropdown-info">
-                  <strong>{accountDisplayName}</strong>
-                  <p className="small">{currentUser?.email}</p>
-                </div>
-                <button
-                  type="button"
-                  className="ghost subtle"
-                  onClick={() => {
-                    setShowAccountMenu(false);
-                    setTab("settings");
-                  }}
-                >
-                  Inställningar
-                </button>
-                <button type="button" className="ghost danger" onClick={logout}>
-                  Logga ut
-                </button>
-              </div>
-            ) : null}
-          </div>
         </div>
       </header>
+
+      <div className="account-menu-wrap account-menu-floating" ref={accountMenuRef}>
+        <button
+          type="button"
+          className="account-avatar-button"
+          onClick={() => setShowAccountMenu((prev) => !prev)}
+          aria-haspopup="menu"
+          aria-expanded={showAccountMenu}
+          aria-controls="account-menu"
+        >
+          {accountInitials}
+        </button>
+        {showAccountMenu ? (
+          <div id="account-menu" className="account-dropdown" role="menu">
+            <div className="account-dropdown-info">
+              <strong>{accountDisplayName}</strong>
+              <p className="small">{currentUser?.email}</p>
+            </div>
+            <button
+              type="button"
+              className="ghost subtle"
+              onClick={() => {
+                setShowAccountMenu(false);
+                setTab("settings");
+              }}
+            >
+              Inställningar
+            </button>
+            <button
+              type="button"
+              className="ghost danger"
+              onClick={() => {
+                setShowAccountMenu(false);
+                logout();
+              }}
+            >
+              Logga ut
+            </button>
+          </div>
+        ) : null}
+      </div>
 
       <section className="command-strip">
         <nav className="tab-row">
@@ -4127,22 +4156,38 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
               <span className="stat-pill">{activeDwelling?.icon} {activeDwelling?.name ?? "Alla boenden"}</span>
             </div>
             <div className="status-grid">
-              <div className="status-metric">
+              <button
+                type="button"
+                className="status-metric status-metric-action"
+                onClick={openLatestShoppingList}
+              >
                 <span>Att handla</span>
                 <strong>{unpickedItems.length}</strong>
-              </div>
-              <div className="status-metric">
+              </button>
+              <button
+                type="button"
+                className="status-metric status-metric-action"
+                onClick={openTodo}
+              >
                 <span>To-do aktiva</span>
                 <strong>{todoStats.total}</strong>
-              </div>
-              <div className="status-metric">
+              </button>
+              <button
+                type="button"
+                className="status-metric status-metric-action"
+                onClick={openTodo}
+              >
                 <span>Förfaller idag</span>
                 <strong>{todoStats.dueToday}</strong>
-              </div>
-              <div className="status-metric">
+              </button>
+              <button
+                type="button"
+                className="status-metric status-metric-action"
+                onClick={openTodo}
+              >
                 <span>Försenade</span>
                 <strong>{todoStats.overdue}</strong>
-              </div>
+              </button>
             </div>
             <div className="members">
               {householdMembers.map((member) => (
