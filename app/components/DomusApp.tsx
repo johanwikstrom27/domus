@@ -1001,7 +1001,6 @@ function resolveTodoSummary(todo: Todo, todayKey: string): "today" | "overdue" |
 const TAB_ITEMS: Array<{ id: string; label: string }> = [
   { id: "overview", label: "Översikt" },
   { id: "shopping", label: "Inköp" },
-  { id: "presets", label: "Presets" },
   { id: "recipes", label: "Recept" },
   { id: "todo", label: "To-do" },
   { id: "settings", label: "Inställningar" },
@@ -1022,6 +1021,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
   const [db, setDb] = useState<DomusDB>(createDefaultDb());
   const [session, setSession] = useState<SessionState>(DEFAULT_SESSION);
   const [tab, setTab] = useState("overview");
+  const [showAccountMenu, setShowAccountMenu] = useState(false);
 
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
   const [loginEmail, setLoginEmail] = useState("");
@@ -1097,6 +1097,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
   const lastCloudErrorRef = useRef(0);
   const recipeAlbumInputRef = useRef<HTMLInputElement | null>(null);
   const recipeCameraInputRef = useRef<HTMLInputElement | null>(null);
+  const accountMenuRef = useRef<HTMLDivElement | null>(null);
 
   const pushToast = useCallback((message: string, actionLabel?: string, action?: () => void) => {
     const toastId = uid();
@@ -1627,6 +1628,61 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
       (authUser && session.currentUserId === authUser.id ? buildUserFromAuth(authUser) : null),
     [authUser, db.users, session.currentUserId],
   );
+
+  const accountInitials = useMemo(() => {
+    const firstName = (currentUser?.firstName ?? "").trim();
+    const lastName = (currentUser?.lastName ?? "").trim();
+
+    const first = firstName.charAt(0).toUpperCase();
+    const second = lastName.charAt(0).toUpperCase();
+
+    if (first && second) {
+      return `${first}${second}`;
+    }
+
+    if (first) {
+      return `${first}${firstName.charAt(1).toUpperCase() || "W"}`;
+    }
+
+    if (lastName) {
+      return `${lastName.charAt(0).toUpperCase()}${lastName.charAt(1).toUpperCase() || "W"}`;
+    }
+
+    const emailPrefix = (currentUser?.email ?? "").slice(0, 1).toUpperCase();
+    return `${emailPrefix || "J"}W`;
+  }, [currentUser?.firstName, currentUser?.lastName, currentUser?.email]);
+
+  const accountDisplayName = useMemo(() => {
+    const name = `${currentUser?.firstName ?? ""} ${currentUser?.lastName ?? ""}`.trim();
+    return name || "Användare";
+  }, [currentUser?.firstName, currentUser?.lastName]);
+
+  useEffect(() => {
+    if (!showAccountMenu) {
+      return;
+    }
+
+    const handleOutsideClick = (event: MouseEvent) => {
+      const target = event.target;
+      if (accountMenuRef.current && target instanceof Node && !accountMenuRef.current.contains(target)) {
+        setShowAccountMenu(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setShowAccountMenu(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [showAccountMenu]);
 
   const myHouseholds = useMemo(() => {
     if (!currentUser) {
@@ -4006,16 +4062,39 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
             </select>
           </label>
 
-          <section className="account-card">
-            <div className="account-badge">{currentUser.firstName.slice(0, 1)}</div>
-            <div className="account-copy">
-              <strong>{currentUser.firstName}</strong>
-              <p className="small">{currentUser.email}</p>
-            </div>
-            <button className="ghost subtle" onClick={logout}>
-              Logga ut
+          <div className="account-menu-wrap" ref={accountMenuRef}>
+            <button
+              type="button"
+              className="account-avatar-button"
+              onClick={() => setShowAccountMenu((prev) => !prev)}
+              aria-haspopup="menu"
+              aria-expanded={showAccountMenu}
+              aria-controls="account-menu"
+            >
+              {accountInitials}
             </button>
-          </section>
+            {showAccountMenu ? (
+              <div id="account-menu" className="account-dropdown" role="menu">
+                <div className="account-dropdown-info">
+                  <strong>{accountDisplayName}</strong>
+                  <p className="small">{currentUser?.email}</p>
+                </div>
+                <button
+                  type="button"
+                  className="ghost subtle"
+                  onClick={() => {
+                    setShowAccountMenu(false);
+                    setTab("settings");
+                  }}
+                >
+                  Inställningar
+                </button>
+                <button type="button" className="ghost danger" onClick={logout}>
+                  Logga ut
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
       </header>
 
@@ -4298,39 +4377,6 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
                 ))}
               </ul>
             ) : null}
-          </article>
-        </section>
-      ) : null}
-
-      {tab === "presets" ? (
-        <section className="content-grid">
-          <article className="panel full">
-            <h2>Presets för {activeDwelling?.name}</h2>
-            <p className="small">Spara aktuell lista och applicera senare. Bara saknade varor läggs till.</p>
-            <div className="shopping-add">
-              <input value={presetName} onChange={(event) => setPresetName(event.target.value)} placeholder="Ex: Helghandel" />
-              <button onClick={savePreset}>Spara preset</button>
-            </div>
-          </article>
-
-          <article className="panel full">
-            {!presetsForDwelling.length ? <p>Inga presets än.</p> : null}
-            <ul className="list">
-              {presetsForDwelling.map((preset) => (
-                <li key={preset.id}>
-                  <div>
-                    <strong>{preset.name}</strong>
-                    <p className="small">{preset.items.length} varor</p>
-                  </div>
-                  <div className="row-actions">
-                    <button onClick={() => applyPreset(preset)}>Applicera</button>
-                    <button className="ghost danger" onClick={() => removePreset(preset.id)}>
-                      Ta bort
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
           </article>
         </section>
       ) : null}
