@@ -3978,7 +3978,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
             </div>
             <div className="stack card-block">
               <h2>Konto</h2>
-              <p className="small">{currentUser.email}</p>
+              <p className="small">{currentUser?.email ?? "Ingen e-post"}</p>
               <button type="button" className="ghost subtle" onClick={logout}>Logga ut</button>
             </div>
           </div>
@@ -4002,7 +4002,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
         <section className="auth-card wide">
           <div className="auth-brand">
             <div className="auth-copy">
-              <p className="eyebrow">Hej {currentUser.firstName}</p>
+            <p className="eyebrow">Hej {currentUser?.firstName ?? "användare"}</p>
               <h1>Skapa ditt hushåll</h1>
               <p>Starta ett nytt hem eller anslut via länk för att testa delad realtime direkt.</p>
             </div>
@@ -5045,9 +5045,9 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
           <article className="panel">
             <h2>Konto</h2>
             <p>
-              {currentUser.firstName} {currentUser.lastName}
+              {currentUser?.firstName ?? "Användare"} {currentUser?.lastName ?? ""}
             </p>
-            <p className="small">{currentUser.email}</p>
+            <p className="small">{currentUser?.email ?? "Ingen e-post"}</p>
           </article>
 
           {inviteFromUrl ? (
