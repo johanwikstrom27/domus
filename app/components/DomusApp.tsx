@@ -1657,28 +1657,6 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
     return name || "Användare";
   }, [currentUser?.firstName, currentUser?.lastName]);
 
-  const latestShoppingListId = useMemo(() => {
-    const dwellingId = activeDwelling?.id;
-    if (!activeHousehold || !dwellingId) {
-      return null;
-    }
-
-    return (
-      db.shoppingLists
-        .filter((item) => item.householdId === activeHousehold.id && item.dwellingId === dwellingId)
-        .sort((a, b) => b.createdAt - a.createdAt)[0]?.id ?? null
-    );
-  }, [activeHousehold, activeDwelling?.id, db.shoppingLists]);
-
-  const openTodo = useCallback(() => {
-    setTab("todo");
-  }, []);
-
-  const openLatestShoppingList = useCallback(() => {
-    setTab("shopping");
-    setActiveShoppingListId(latestShoppingListId);
-  }, [latestShoppingListId]);
-
   useEffect(() => {
     if (!showAccountMenu) {
       return;
@@ -1754,6 +1732,28 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
     () => db.dwellings.find((dwelling) => dwelling.id === session.activeDwellingId) ?? null,
     [db.dwellings, session.activeDwellingId],
   );
+
+  const latestShoppingListId = useMemo(() => {
+    const dwellingId = activeDwelling?.id;
+    if (!activeHousehold || !dwellingId) {
+      return null;
+    }
+
+    return (
+      db.shoppingLists
+        .filter((item) => item.householdId === activeHousehold.id && item.dwellingId === dwellingId)
+        .sort((a, b) => b.createdAt - a.createdAt)[0]?.id ?? null
+    );
+  }, [activeHousehold, activeDwelling?.id, db.shoppingLists]);
+
+  const openTodo = useCallback(() => {
+    setTab("todo");
+  }, []);
+
+  const openLatestShoppingList = useCallback(() => {
+    setTab("shopping");
+    setActiveShoppingListId(latestShoppingListId);
+  }, [latestShoppingListId]);
 
   const householdMembers = useMemo(() => {
     if (!activeHousehold) {
