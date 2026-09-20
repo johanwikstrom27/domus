@@ -21,8 +21,9 @@ npm run dev
 
 1. Skapa ett Supabase-projekt.
 2. Kör migrationen i [supabase/migrations/20260309203000_domus_realtime_foundation.sql](/Users/johanwikstrom/domus/supabase/migrations/20260309203000_domus_realtime_foundation.sql).
-3. Säkerställ att Email auth är aktiverat.
-4. Om du vill kunna testa snabbt utan mailbekräftelse: stäng av email confirmation i Supabase Auth settings.
+3. Kör därefter den senaste migrationen i `supabase/migrations/` så att äldre katalograder inte längre är globalt läsbara.
+4. Säkerställ att Email auth är aktiverat.
+5. Om du vill kunna testa snabbt utan mailbekräftelse: stäng av email confirmation i Supabase Auth settings.
 
 Miljövariabler:
 
