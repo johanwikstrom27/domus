@@ -4520,6 +4520,47 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
               </article>
 
               <article className="panel full">
+                <div className="section-head">
+                  <div>
+                    <h2>Presets</h2>
+                    <p className="small">Spara varorna som är kvar och använd dem igen i det här boendet.</p>
+                  </div>
+                  <div className="row-actions">
+                    <input
+                      aria-label="Namn på preset"
+                      value={presetName}
+                      onChange={(event) => setPresetName(event.target.value)}
+                      placeholder="Presetnamn"
+                    />
+                    <button className="ghost" onClick={savePreset} disabled={!unpickedItems.length}>
+                      Spara aktuell lista
+                    </button>
+                  </div>
+                </div>
+                {!presetsForDwelling.length ? <p className="small">Inga presets sparade för boendet ännu.</p> : null}
+                {presetsForDwelling.length ? (
+                  <ul className="list">
+                    {presetsForDwelling.map((preset) => (
+                      <li key={preset.id} className="shopping-row">
+                        <span className="item-name">
+                          <strong>{preset.name}</strong>
+                          <span className="small">{preset.items.length} varor</span>
+                        </span>
+                        <div className="row-actions">
+                          <button className="ghost" onClick={() => applyPreset(preset)}>
+                            Lägg till saknade
+                          </button>
+                          <button className="ghost danger" onClick={() => removePreset(preset.id)}>
+                            Ta bort
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </article>
+
+              <article className="panel full">
                 <h2>Att handla</h2>
                 {!shoppingByCategory.length ? <p>Listan är tom just nu.</p> : null}
                 {shoppingByCategory.map((group, index) => (
