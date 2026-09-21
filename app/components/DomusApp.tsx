@@ -293,6 +293,7 @@ interface CloudStateRow {
 
 interface CloudCatalogRow {
   id: string;
+  household_id: string | null;
   name: string;
   category: string;
   default_quantity: number | string;
@@ -711,8 +712,9 @@ function buildDbFromCloudSnapshot(args: {
       return householdCatalog;
     }
 
-    if (catalogRows.length > 0) {
-      return catalogRows.map((item) => ({
+    const scopedCatalogRows = catalogRows.filter((item) => item.household_id === household.id);
+    if (scopedCatalogRows.length > 0) {
+      return scopedCatalogRows.map((item) => ({
         householdId: household.id,
         id: item.id,
         name: item.name,
@@ -1254,7 +1256,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
       const [{ data: membershipRows, error: membershipError }, { data: catalogRows, error: catalogError }, { data: settingRows, error: settingError }] =
         await Promise.all([
           supabase.from(CLOUD_TABLES.members).select("household_id,user_id,joined_at"),
-          supabase.from(CLOUD_TABLES.catalog).select("id,name,category,default_quantity,default_unit,units").order("name"),
+          supabase.from(CLOUD_TABLES.catalog).select("id,household_id,name,category,default_quantity,default_unit,units").order("name"),
           supabase.from(CLOUD_TABLES.settings).select("user_id,daily_summary_enabled,last_summary_date,category_overrides").eq("user_id", userId).maybeSingle(),
         ]);
 
@@ -4511,6 +4513,47 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
                           <strong>{index === 0 ? "Enter → " : ""}{item.name}</strong>
                           <span>{item.defaultQuantity} {item.defaultUnit}</span>
                         </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </article>
+
+              <article className="panel full">
+                <div className="section-head">
+                  <div>
+                    <h2>Presets</h2>
+                    <p className="small">Spara varorna som är kvar och använd dem igen i det här boendet.</p>
+                  </div>
+                  <div className="row-actions">
+                    <input
+                      aria-label="Namn på preset"
+                      value={presetName}
+                      onChange={(event) => setPresetName(event.target.value)}
+                      placeholder="Presetnamn"
+                    />
+                    <button className="ghost" onClick={savePreset} disabled={!unpickedItems.length}>
+                      Spara aktuell lista
+                    </button>
+                  </div>
+                </div>
+                {!presetsForDwelling.length ? <p className="small">Inga presets sparade för boendet ännu.</p> : null}
+                {presetsForDwelling.length ? (
+                  <ul className="list">
+                    {presetsForDwelling.map((preset) => (
+                      <li key={preset.id} className="shopping-row">
+                        <span className="item-name">
+                          <strong>{preset.name}</strong>
+                          <span className="small">{preset.items.length} varor</span>
+                        </span>
+                        <div className="row-actions">
+                          <button className="ghost" onClick={() => applyPreset(preset)}>
+                            Lägg till saknade
+                          </button>
+                          <button className="ghost danger" onClick={() => removePreset(preset.id)}>
+                            Ta bort
+                          </button>
+                        </div>
                       </li>
                     ))}
                   </ul>
