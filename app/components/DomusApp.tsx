@@ -293,6 +293,7 @@ interface CloudStateRow {
 
 interface CloudCatalogRow {
   id: string;
+  household_id: string | null;
   name: string;
   category: string;
   default_quantity: number | string;
@@ -711,8 +712,9 @@ function buildDbFromCloudSnapshot(args: {
       return householdCatalog;
     }
 
-    if (catalogRows.length > 0) {
-      return catalogRows.map((item) => ({
+    const householdCatalogRows = catalogRows.filter((item) => item.household_id === household.id);
+    if (householdCatalogRows.length > 0) {
+      return householdCatalogRows.map((item) => ({
         householdId: household.id,
         id: item.id,
         name: item.name,
@@ -1254,7 +1256,7 @@ export default function DomusApp({ initialJoinToken }: { initialJoinToken?: stri
       const [{ data: membershipRows, error: membershipError }, { data: catalogRows, error: catalogError }, { data: settingRows, error: settingError }] =
         await Promise.all([
           supabase.from(CLOUD_TABLES.members).select("household_id,user_id,joined_at"),
-          supabase.from(CLOUD_TABLES.catalog).select("id,name,category,default_quantity,default_unit,units").order("name"),
+          supabase.from(CLOUD_TABLES.catalog).select("id,household_id,name,category,default_quantity,default_unit,units").order("name"),
           supabase.from(CLOUD_TABLES.settings).select("user_id,daily_summary_enabled,last_summary_date,category_overrides").eq("user_id", userId).maybeSingle(),
         ]);
 
